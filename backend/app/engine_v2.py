@@ -3,6 +3,8 @@ import json, os, math, time, statistics
 from typing import Dict, List, Tuple, Optional
 from zoneinfo import ZoneInfo
 import redis
+from kiteconnect.exceptions import TokenException
+from .kite import get_kite
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 IST = ZoneInfo("Asia/Kolkata")
@@ -204,11 +206,39 @@ def session_status() -> Dict:
     rd = r()
     hb = rd.get("ticker:heartbeat")
     ticker = bool(hb and (now_ms() - int(hb)) < 15000)
-    zerodha = bool(os.path.exists(os.path.join(os.path.dirname(__file__), "data", "session", ".kite_session.json")))
+
+    # Validate Zerodha token by calling profile() when an access_token exists.
+    try:
+        ks = get_kite()
+        zerodha_ok = bool(getattr(ks, "access_token", None))
+        if zerodha_ok:
+            try:
+                ks.kite.profile()
+            except TokenException:
+                zerodha_ok = False
+            except Exception:
+                # Non-auth errors shouldn't flip login status
+                pass
+    except Exception:
+        zerodha_ok = False
+
     llm = bool(os.environ.get("OPENAI_API_KEY"))
     ages = []
     for sym in rd.smembers("symbols:active") or []:
         s = read_snap(sym)
-        if s: ages.append(s["_age_s"])
+        if s:
+            ages.append(s["_age_s"])
     p95 = (statistics.quantiles(ages, n=20)[-1] if ages else 0.0)
-    return {"zerodha": zerodha, "ticker": ticker, "llm": llm, "logged_in": zerodha, "market_open": market_open_ist(), "window_status": window_status(pol), "degraded": bool(p95 and p95 > pol.get("staleness_s", 10)), "snapshot_p95_age_s": round(p95 or 0.0, 1), "time_ist": time.strftime("%H:%M:%S", time.localtime()), "rev": rev}
+
+    return {
+        "zerodha": zerodha_ok,
+        "ticker": ticker,
+        "llm": llm,
+        "logged_in": zerodha_ok,
+        "market_open": market_open_ist(),
+        "window_status": window_status(pol),
+        "degraded": bool(p95 and p95 > pol.get("staleness_s", 10)),
+        "snapshot_p95_age_s": round(p95 or 0.0, 1),
+        "time_ist": time.strftime("%H:%M:%S", time.localtime()),
+        "rev": rev,
+    }
