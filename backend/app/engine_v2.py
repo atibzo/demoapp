@@ -1,0 +1,203 @@
+from __future__ import annotations
+import json, os, math, time, statistics
+from typing import Dict, List, Tuple, Optional
+from zoneinfo import ZoneInfo
+import redis
+
+REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+IST = ZoneInfo("Asia/Kolkata")
+def r() -> redis.Redis: return redis.from_url(REDIS_URL, decode_responses=True)
+def now_ms() -> int: return int(time.time() * 1000)
+
+# --- policy in Redis (source of truth) ---
+def _load_policy_file() -> Dict:
+    here = os.path.dirname(__file__)
+    with open(os.path.join(here, "policy.json"), "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def load_policy() -> Tuple[Dict, int]:
+    rd = r()
+    raw = rd.get("policy:current")
+    rev = int(rd.get("policy:rev") or 0)
+    if raw:
+        return json.loads(raw), rev
+    pf = _load_policy_file()     # first run: hydrate from file
+    rd.set("policy:current", json.dumps(pf))
+    rd.set("policy:rev", 1)
+    return pf, 1
+
+def save_policy(new_body: Dict) -> int:
+    rd = r()
+    rd.set("policy:current", json.dumps(new_body))
+    return int(rd.incr("policy:rev"))
+
+# --- helpers ---
+def market_open_ist() -> bool:
+    t = time.time()
+    lt = time.localtime(t + (IST.utcoffset(None) or 0).total_seconds())
+    hhmm = int(f"{lt.tm_hour:02d}{lt.tm_min:02d}")
+    return 915 <= hhmm <= 1530
+
+def window_status(pol: Dict) -> str:
+    t = time.time()
+    lt = time.localtime(t + (IST.utcoffset(None) or 0).total_seconds())
+    hhmm = f"{lt.tm_hour:02d}:{lt.tm_min:02d}"
+    start = pol.get("entry_window", {}).get("start", "11:00")
+    end   = pol.get("entry_window", {}).get("end", "15:10")
+    if hhmm < start: return "early"
+    if hhmm > end:   return "closed"
+    return "ok"
+
+def list_active_symbols() -> List[str]:
+    return sorted(list(r().smembers("symbols:active") or []))
+
+def read_snap(sym: str) -> Optional[Dict]:
+    raw = r().get(f"snap:{sym}")
+    if not raw: return None
+    j = json.loads(raw)
+    j["_age_s"] = max(0.0, (now_ms() - float(j.get("ts_ms", now_ms()))) / 1000.0)
+    return j
+
+# --- simple scoring (bounded factors) ---
+def _side(ema9, ema21) -> str: return "long" if (ema9 or 0) >= (ema21 or 0) else "short"
+def _regime(atr, price) -> str:
+    try:
+        rv = (atr or 0) / max(1e-6, (price or 1))
+        return "Calm" if rv < 0.006 else ("Hot" if rv > 0.018 else "Normal")
+    except: return "Normal"
+
+def _trigger(side, ema9, don_l, don_u):
+    if side == "long":
+        c = [v for v in [don_u, ema9] if isinstance(v, (int,float))]
+        return max(c) if c else None
+    c = [v for v in [don_l, ema9] if isinstance(v, (int,float))]
+    return min(c) if c else None
+
+def _factors(s: Dict, pol: Dict) -> Dict[str, float]:
+    price, atr, ema9, ema21, vwap = s.get("price") or s.get("last_price"), s.get("atr"), s.get("ema9"), s.get("ema21"), s.get("vwap")
+    def squash(x, lo, hi):
+        try:
+            x = max(lo, min(hi, x)); return (x - lo) / (hi - lo)
+        except: return 0.0
+    trend = squash(((ema9 or 0)-(ema21 or 0))/max(1e-6, (atr or 1.0)), -1.0, 1.0)
+    pull  = math.exp(-((abs((price or 0)-(ema9 or 0))/max(1e-6,(atr or 1.0))))**2)
+    vwd   = abs((price or 0)-(vwap or 0))/max(1e-6,(atr or 1.0))
+    vwap_align = 1.0 - squash(vwd, 0.0, 2.0)
+    don_l, don_u = s.get("donch_lo") or s.get("donchian_lower"), s.get("donch_hi") or s.get("donchian_upper")
+    side = _side(ema9, ema21)
+    if side == "long":
+        prox = 1.0 - squash(abs((don_u or 0)-(price or 0))/max(1e-6,(atr or 1.0)), 0.0, 2.0)
+    else:
+        prox = 1.0 - squash(abs((price or 0)-(don_l or 0))/max(1e-6,(atr or 1.0)), 0.0, 2.0)
+    breakout = max(0.0, prox)
+    volx = s.get("vol_mult") or 1.0
+    volume = squash(volx, 0.5, 2.0)
+    return {"trend":float(trend),"pullback":float(pull),"vwap":float(vwap_align),"breakout":float(breakout),"volume":float(volume)}
+
+def _score_conf(factors: Dict[str,float], pol: Dict, regime: str, fresh_ok: bool, liq_ok: bool) -> Tuple[float,float]:
+    w = pol.get("weights", {})
+    num = (w.get("trend",1)*factors["trend"] + w.get("pullback",0.6)*factors["pullback"] +
+           w.get("vwap",0.8)*factors["vwap"] + w.get("breakout",0.7)*factors["breakout"] +
+           w.get("volume",0.6)*factors["volume"])
+    den = (w.get("trend",1)+w.get("pullback",0.6)+w.get("vwap",0.8)+w.get("breakout",0.7)+w.get("volume",0.6))
+    score = 100.0 * num / max(1e-6, den)
+    caps = pol.get("regime_caps", {"Calm":0.9,"Normal":0.8,"Hot":0.6})
+    conf = min(1.0 if fresh_ok else 0.0, 1.0 if liq_ok else 0.5, float(caps.get(regime,0.8)), float(factors["trend"]))
+    return float(score), float(conf)
+
+def _universe_soft_reason(sym: str, pol: Dict) -> Optional[str]:
+    mode = (pol.get("universe", {}).get("mode") or "strict").lower()
+    pats = pol.get("universe", {}).get("exclude_patterns", [])
+    if mode == "off": return None
+    # cheap classifier by symbol text; you can enrich with instrument meta if you store it
+    non_intraday = any(pat in sym for pat in pats)
+    if non_intraday:
+        return "non_intraday" if mode in ("strict","soft") else None
+    return None
+
+def plan(top_n: int = 10) -> Tuple[List[Dict], Dict]:
+    pol, rev = load_policy()
+    staleness = int(pol.get("staleness_s", 10))
+    wstatus = window_status(pol)
+    rows, ages = [], []
+
+    for sym in list_active_symbols():
+        s = read_snap(sym)
+        if not s: continue
+        ages.append(s["_age_s"])
+        price, atr, ema9, ema21 = s.get("price") or s.get("last_price"), s.get("atr"), s.get("ema9"), s.get("ema21")
+        don_l, don_u = s.get("donch_lo") or s.get("donchian_lower"), s.get("donch_hi") or s.get("donchian_upper")
+        side = _side(ema9, ema21)
+        regime = _regime(atr, price)
+        factors = _factors(s, pol)
+        fresh_ok = s["_age_s"] <= staleness
+        liq_reason = _universe_soft_reason(sym, pol)
+        liq_ok = liq_reason is None
+        score, conf = _score_conf(factors, pol, regime, fresh_ok, liq_ok)
+        trig = _trigger(side, ema9, don_l, don_u)
+        d_bps = None if trig is None or not price else round(abs(trig-price)/price*10000.0, 1)
+
+        readiness, block_reason = "Wait", None
+        if not fresh_ok: readiness, block_reason = "Stale", "stale"
+        elif wstatus != "ok": readiness, block_reason = "Blocked", f"window:{wstatus}"
+        elif not liq_ok: readiness, block_reason = "Blocked", liq_reason
+        elif d_bps is not None: readiness = "Ready" if d_bps <= 20 else ("Near" if d_bps <= 60 else "Wait")
+
+        rows.append({
+            "symbol": sym, "side": side, "score": round(score,1), "confidence": round(conf,2),
+            "age_s": round(s["_age_s"],1), "regime": regime, "delta_trigger_bps": d_bps,
+            "readiness": readiness, "block_reason": block_reason,
+            "checks": {"VWAPΔ": factors["vwap"] >= 0.5, "VolX": (s.get("vol_mult") or 1.0) >= 1.0, "Liquidity": liq_ok}
+        })
+
+    rows.sort(key=lambda x: x["score"], reverse=True)
+    p95 = (statistics.quantiles(ages, n=20)[-1] if ages else 0.0)
+    return rows[:top_n], {"rev": rev, "snapshot_p95_age_s": p95, "window_status": wstatus}
+
+def analyze(symbol: str) -> Dict:
+    pol, rev = load_policy()
+    sym = symbol.replace(" ", "").upper()
+    s = read_snap(sym)
+    if not s:
+        return {"decision":"WAIT","score":0.0,"confidence":0.0,"bands":{"lo":None,"hi":None},"action":{},"why":{"trend":0,"pullback":0,"vwap":0,"breakout":0,"volume":0,"checks":{}},"meta":{"age_s":None,"regime":"Normal","liquidity_ok":False}}
+    price, atr, ema9, ema21, vwap = s.get("price") or s.get("last_price"), s.get("atr"), s.get("ema9"), s.get("ema21"), s.get("vwap")
+    don_l, don_u = s.get("donch_lo") or s.get("donchian_lower"), s.get("donch_hi") or s.get("donchian_upper")
+    side = _side(ema9, ema21); regime = _regime(atr, price)
+    factors = _factors(s, pol)
+    fresh_ok = s["_age_s"] <= int(pol.get("staleness_s", 10))
+    liq_ok = _universe_soft_reason(sym, pol) is None
+    score, conf = _score_conf(factors, pol, regime, fresh_ok, liq_ok)
+
+    # bracket
+    b = pol.get("bracket", {})
+    entry_chase = float(b.get("entry_chase_atr", 0.15)); tp1_atr = float(b.get("tp1_atr", 0.75))
+    tp2_atr = float(b.get("tp2_atr", 1.5)); stop_off = float(b.get("stop_vwap_offset_atr", 0.5))
+    trig = _trigger(side, ema9, don_l, don_u)
+    action = {}
+    if trig is not None and atr and price:
+      if side == "long":
+        action = {"trigger": round(trig,2), "entry_range":[round(trig,2), round(trig+entry_chase*atr,2)], "stop": round((vwap or price)-stop_off*atr,2), "tp1": round(trig+tp1_atr*atr,2), "tp2": round(trig+tp2_atr*atr,2), "invalid_if":"1-min close below EMA21"}
+      else:
+        action = {"trigger": round(trig,2), "entry_range":[round(trig-entry_chase*atr,2), round(trig,2)], "stop": round((vwap or price)+stop_off*atr,2), "tp1": round(trig-tp1_atr*atr,2), "tp2": round(trig-tp2_atr*atr,2), "invalid_if":"1-min close above EMA21"}
+
+    return {
+      "decision": "BUY" if (action and side=="long") else ("SELL" if (action and side=="short") else "WAIT"),
+      "score": round(score,2), "confidence": round(conf,2),
+      "bands": {"lo": None if don_l is None else round(don_l,2), "hi": None if don_u is None else round(don_u,2)},
+      "action": action, "why": {**factors, "checks":{"VWAPΔ": factors["vwap"]>=0.5, "VolX": (s.get("vol_mult") or 1.0)>=1.0}},
+      "meta": {"age_s": round(s["_age_s"],1), "regime": regime, "liquidity_ok": liq_ok}
+    }
+
+def session_status() -> Dict:
+    pol, rev = load_policy()
+    rd = r()
+    hb = rd.get("ticker:heartbeat")
+    ticker = bool(hb and (now_ms() - int(hb)) < 15000)
+    zerodha = bool(os.path.exists(os.path.join(os.path.dirname(__file__), "data", "session", ".kite_session.json")))
+    llm = bool(os.environ.get("OPENAI_API_KEY"))
+    ages = []
+    for sym in rd.smembers("symbols:active") or []:
+        s = read_snap(sym)
+        if s: ages.append(s["_age_s"])
+    p95 = (statistics.quantiles(ages, n=20)[-1] if ages else 0.0)
+    return {"zerodha": zerodha, "ticker": ticker, "llm": llm, "logged_in": zerodha, "market_open": market_open_ist(), "window_status": window_status(pol), "degraded": bool(p95 and p95 > pol.get("staleness_s", 10)), "snapshot_p95_age_s": round(p95 or 0.0, 1), "time_ist": time.strftime("%H:%M:%S", time.localtime()), "rev": rev}

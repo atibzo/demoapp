@@ -1,0 +1,20 @@
+{
+  "weights": {
+    "time_of_day": 1.0,
+    "spread_penalty": -0.2
+  },
+  "thresholds": {
+    "min_volx": 1.4,
+    "max_spread_pct": 0.05,
+    "vwap_pullback_pct": 0.2,
+    "vwap_reversion_max_dev": 0.6,
+    "orb_window_min": 30,
+    "retest_pull_pct": 0.25,
+    "range_near_vwap_pct": 0.15,
+    "boll_dev_pct": 0.4,
+    "news_volx_gate": 1.8,
+    "atr_mult_sl": 1.2,
+    "rr_target": 1.6
+  },
+  "strategies": {}
+}
