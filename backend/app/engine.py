@@ -46,7 +46,7 @@ def _side_align(value_signed: float, side: str, scale: float = 1.0) -> float:
 
 # ---------- data access ----------
 def minute_snapshot(symbol: str) -> Dict[str, Any]:
-    r = redis_client(os.getenv("REDIS_URL"))
+    r = redis_client(os.getenv("REDIS_URL"), decode_responses=True)
     raw = r.get(f"snap:{symbol}")
     if not raw:
         raise RuntimeError(f"live snapshot not available for {symbol}")
@@ -76,7 +76,7 @@ def plan(universe: List[str], top_n: int = 30) -> List[Dict[str, Any]]:
         (near VWAP (|VWAPΔ|≤0.25%) OR near Donchian (≤0.25%) OR touches ORB band)
       • else 'wait'
     """
-    r = redis_client(os.getenv("REDIS_URL"))
+    r = redis_client(os.getenv("REDIS_URL"), decode_responses=True)
     rows: List[Dict[str, Any]] = []
 
     for sym in universe[:2000]:

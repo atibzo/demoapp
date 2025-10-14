@@ -1,10 +1,21 @@
 
 import redis, os, time
 _pool=None
-def redis_client(url=None):
+def redis_client(url=None, decode_responses=True):
     global _pool
     if _pool is None:
-        _pool = redis.from_url(url or os.getenv("REDIS_URL","redis://localhost:6379/0"), decode_responses=True)
+        try:
+            _pool = redis.from_url(
+                url or os.getenv("REDIS_URL","redis://localhost:6379/0"), 
+                decode_responses=decode_responses,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+                retry_on_timeout=True,
+                health_check_interval=30
+            )
+        except Exception as e:
+            print(f"Redis connection error: {e}")
+            raise
     return _pool
 def token_bucket(key, capacity:int, refill_rate:float):
     r=redis_client(); now=time.time()

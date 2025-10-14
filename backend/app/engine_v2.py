@@ -9,6 +9,17 @@ IST = ZoneInfo("Asia/Kolkata")
 def r() -> redis.Redis: return redis.from_url(REDIS_URL, decode_responses=True)
 def now_ms() -> int: return int(time.time() * 1000)
 
+def market_open_ist() -> bool:
+    """Check if market is currently open in IST"""
+    from datetime import datetime
+    now = datetime.now(tz=IST)
+    if now.weekday() >= 5:  # Weekend
+        return False
+    minutes = now.hour * 60 + now.minute
+    open_m = 9 * 60 + 15   # 09:15
+    close_m = 15 * 60 + 30  # 15:30
+    return open_m <= minutes <= close_m
+
 # --- policy in Redis (source of truth) ---
 def _load_policy_file() -> Dict:
     here = os.path.dirname(__file__)
@@ -159,7 +170,7 @@ def analyze(symbol: str) -> Dict:
     sym = symbol.replace(" ", "").upper()
     s = read_snap(sym)
     if not s:
-        return {"decision":"WAIT","score":0.0,"confidence":0.0,"bands":{"lo":None,"hi":None},"action":{},"why":{"trend":0,"pullback":0,"vwap":0,"breakout":0,"volume":0,"checks":{}},"meta":{"age_s":None,"regime":"Normal","liquidity_ok":False}}
+        return {"decision":"WAIT","score":0.0,"confidence":0.0,"bands":[1.0, 1.0],"action":{},"why":{"trend":0,"pullback":0,"vwap":0,"breakout":0,"volume":0,"checks":{}},"meta":{"age_s":None,"regime":"Normal","liquidity_ok":False}}
     price, atr, ema9, ema21, vwap = s.get("price") or s.get("last_price"), s.get("atr"), s.get("ema9"), s.get("ema21"), s.get("vwap")
     don_l, don_u = s.get("donch_lo") or s.get("donchian_lower"), s.get("donch_hi") or s.get("donchian_upper")
     side = _side(ema9, ema21); regime = _regime(atr, price)
@@ -183,7 +194,7 @@ def analyze(symbol: str) -> Dict:
     return {
       "decision": "BUY" if (action and side=="long") else ("SELL" if (action and side=="short") else "WAIT"),
       "score": round(score,2), "confidence": round(conf,2),
-      "bands": {"lo": None if don_l is None else round(don_l,2), "hi": None if don_u is None else round(don_u,2)},
+      "bands": [round(don_l or price, 2), round(don_u or price, 2)],
       "action": action, "why": {**factors, "checks":{"VWAPΔ": factors["vwap"]>=0.5, "VolX": (s.get("vol_mult") or 1.0)>=1.0}},
       "meta": {"age_s": round(s["_age_s"],1), "regime": regime, "liquidity_ok": liq_ok}
     }

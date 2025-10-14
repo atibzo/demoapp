@@ -4,3 +4,6 @@
 
 /* Optional polish */
 html, body { background: #f8f8fa; }
+
+/* Input component styling */
+.input { @apply border rounded px-2 py-1; }
