@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { API, j } from '@/lib/api';
+import ErrorBoundary from './ErrorBoundary';
 
 /* ------------------------------------------------------------------ *
  * Types & helpers
@@ -46,7 +47,9 @@ function v2ToMode(s: SessionV2): Mode {
 
 async function fetchSession(): Promise<Session> {
   try {
-    const s: SessionV2 = await (await fetch(`${API}/api/v2/session`, { cache: 'no-store' })).json();
+    const response = await fetch(`${API}/api/v2/session`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const s: SessionV2 = await response.json();
     const cfg = await j(await fetch(`${API}/api/config`)).catch(() => ({ universe_limit: 0, pinned: [] }));
     return {
       zerodha: !!s.zerodha,
@@ -60,14 +63,20 @@ async function fetchSession(): Promise<Session> {
       mode: v2ToMode(s),
       rev: s.rev ?? 0
     };
-  } catch {
-    const s = await j(await fetch(`${API}/api/session`));
-    return {
-      zerodha: !!s.zerodha, llm: !!s.llm, ticker: !!s.ticker,
-      stale_count: s.stale_count ?? 0, subscribed_count: s.subscribed_count ?? 0, universe_limit: s.universe_limit ?? 0,
-      market_open: !!s.market_open, server_time_ist: s.server_time_ist ?? '',
-      mode: (s.mode as Mode) ?? 'HISTORICAL', rev: 0
-    };
+  } catch (error) {
+    console.warn('v2 session failed, falling back to v1:', error);
+    try {
+      const s = await j(await fetch(`${API}/api/session`));
+      return {
+        zerodha: !!s.zerodha, llm: !!s.llm, ticker: !!s.ticker,
+        stale_count: s.stale_count ?? 0, subscribed_count: s.subscribed_count ?? 0, universe_limit: s.universe_limit ?? 0,
+        market_open: !!s.market_open, server_time_ist: s.server_time_ist ?? '',
+        mode: (s.mode as Mode) ?? 'HISTORICAL', rev: 0
+      };
+    } catch (fallbackError) {
+      console.error('Both session endpoints failed:', fallbackError);
+      throw fallbackError;
+    }
   }
 }
 
@@ -140,14 +149,24 @@ function ModeBanner({ mode }:{mode:Mode}) {
 
 function Hint({ metric, context }:{metric:string; context:any}) {
   const [text,setText]=useState(''); const [loading,setLoading]=useState(false);
-  useEffect(()=>{(async()=>{
-    try{
-      setLoading(true);
-      const r=await fetch(`${API}/api/hint`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({metric,context})});
-      const x=await j(r);
-      setText(x.data?.hint||'');
-    }catch{ setText(''); }finally{ setLoading(false); }
-  })();},[]);
+  useEffect(()=>{
+    let cancelled = false;
+    const timeoutId = setTimeout(async()=>{
+      if (cancelled) return;
+      try{
+        setLoading(true);
+        const r=await fetch(`${API}/api/hint`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({metric,context})});
+        if (cancelled) return;
+        const x=await j(r);
+        setText(x.data?.hint||'');
+      }catch{ 
+        if (!cancelled) setText(''); 
+      }finally{ 
+        if (!cancelled) setLoading(false); 
+      }
+    }, 500); // Debounce by 500ms
+    return () => { cancelled = true; clearTimeout(timeoutId); };
+  },[metric, JSON.stringify(context)]);
   if (loading && !text) return <span className="ml-1 text-[11px] text-zinc-400">…</span>;
   return text ? <span className="ml-1 text-[11px] text-zinc-400">✦ {text}</span> : null;
 }
@@ -271,7 +290,11 @@ function TopAlgos({session}:{session:Session|null}) {
     }finally{ setLoading(false); }
   }
 
-  useEffect(()=>{ refresh(); const id=setInterval(refresh,8000); return ()=>clearInterval(id); },[]);
+  useEffect(()=>{ 
+    refresh(); 
+    const id=setInterval(refresh, session?.mode === 'LIVE' ? 8000 : 15000); // Slower polling when not live
+    return ()=>clearInterval(id); 
+  },[session?.mode]);
 
   return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
     <div className="mb-2 flex items-center justify-between">
@@ -348,12 +371,17 @@ function Watch({session}:{session:Session|null}) {
   function add(s:string){ s=s.trim(); if(!s) return; if(!symbols.includes(s)) setSymbols([...symbols,s]); }
   useEffect(()=>{
     if(symbols.length===0) return;
+    const pollInterval = session?.mode === 'LIVE' ? 3000 : 10000; // Slower when not live
     const id=setInterval(async()=>{
-      const r=await j(await fetch(`${API}/api/live?symbols=${encodeURIComponent(symbols.join(','))}`));
-      setSnaps(r.data||{});
-    }, 3000);
+      try {
+        const r=await j(await fetch(`${API}/api/live?symbols=${encodeURIComponent(symbols.join(','))}`));
+        setSnaps(r.data||{});
+      } catch (error) {
+        console.error('Watch polling error:', error);
+      }
+    }, pollInterval);
     return ()=>clearInterval(id);
-  },[symbols]);
+  },[symbols, session?.mode]);
   return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
     <div className="mb-2 flex gap-2 items-center">
       <input placeholder="Add EXCH:SYMBOL (e.g., NSE:INFY)" onKeyDown={e=>{ if(e.key==='Enter'){ add((e.target as any).value); (e.target as any).value=''; } }} className="w-72 rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
@@ -651,19 +679,25 @@ export default function App() {
   }
 
   useEffect(()=>{ pullSession(); }, []);
-  useEffect(()=>{ const id=setInterval(pullSession, 5000); return ()=>clearInterval(id); }, []);
+  useEffect(()=>{ 
+    const pollInterval = session?.mode === 'LIVE' ? 5000 : 10000; // Slower polling when not live
+    const id=setInterval(pullSession, pollInterval); 
+    return ()=>clearInterval(id); 
+  }, [session?.mode]);
 
   return (
     <div className="min-h-screen w-full bg-zinc-50">
       <Header session={session} onLogin={login} />
       {session && <ModeBanner mode={session.mode} />}
       <Tabs tab={tab} setTab={setTab} />
-      {tab === 'Top Algos' && <TopAlgos session={session} />}
-      {tab === 'Watch' && <Watch session={session} />}
-      {tab === 'Analyst' && <Analyst session={session} />}
-      {tab === 'Journal' && <Journal />}
-      {tab === 'Policy' && <PolicyForm />}
-      {tab === 'Config' && <Config />}
+      <ErrorBoundary>
+        {tab === 'Top Algos' && <TopAlgos session={session} />}
+        {tab === 'Watch' && <Watch session={session} />}
+        {tab === 'Analyst' && <Analyst session={session} />}
+        {tab === 'Journal' && <Journal />}
+        {tab === 'Policy' && <PolicyForm />}
+        {tab === 'Config' && <Config />}
+      </ErrorBoundary>
     </div>
   );
 }

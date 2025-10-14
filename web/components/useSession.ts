@@ -9,6 +9,10 @@ export type Session = {
   stale_count: number;
   subscribed_count: number;
   universe_limit: number;
+  market_open: boolean;
+  server_time_ist: string;
+  mode: 'LIVE' | 'WAITING' | 'HISTORICAL';
+  rev: number;
 };
 
 export function useSession(pollMs = 5000) {

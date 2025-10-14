@@ -22,6 +22,8 @@ from .models import APIResponse, Policy, HintIn
 from .kite import get_kite
 from .engine import plan, minute_snapshot
 from . import llm
+from .api_v2 import router as api_v2_router
+from .api_v2_hist import router as api_v2_hist_router
 
 # ---------- Config ----------
 IST = ZoneInfo("Asia/Kolkata")
@@ -136,12 +138,16 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(AccessLogMiddleware)
 
+# ---------- Include API v2 Routers ----------
+app.include_router(api_v2_router, prefix="/api/v2")
+app.include_router(api_v2_hist_router)  # already has prefix
+
 # ---------- Redis ----------
-# If your redis_client supports decode_responses, pass it; otherwise decode at call sites.
 try:
-    r = redis_client(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True)  # type: ignore[arg-type]
-except TypeError:
-    r = redis_client(os.getenv("REDIS_URL", "redis://redis:6379/0"))  # fallback
+    r = redis_client(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True)
+except Exception as e:
+    log.error(f"Failed to connect to Redis: {e}")
+    raise
 
 
 # Allow hist.py to reuse the same policy you edit via /api/policy
@@ -296,6 +302,15 @@ def api_hint(body: HintIn):
         text = ""
     return {"ok": True, "request_id": rid(), "duration_ms": 0, "data": {"hint": text}}
 
+
+# ---------- Journal ----------
+@app.get("/api/journal")
+def api_journal():
+    """
+    Returns trading journal entries. Currently returns empty list.
+    TODO: Implement actual journal storage and retrieval.
+    """
+    return {"ok": True, "request_id": rid(), "duration_ms": 0, "data": []}
 
 # ---------- Config (pinned & active universe limit) ----------
 @app.get("/api/config")

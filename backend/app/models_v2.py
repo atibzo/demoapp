@@ -22,7 +22,7 @@ class AnalyzeResponseV2(BaseModel):
     decision: Literal["BUY", "SELL", "WAIT"]
     score: float
     confidence: float
-    bands: Dict[str, Optional[float]]
+    bands: List[float]  # Changed from Dict to List to match frontend expectation
     action: Dict[str, object]
     why: Dict[str, object]
     meta: Dict[str, object]

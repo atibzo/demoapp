@@ -3,9 +3,9 @@ import json
 from openai import OpenAI
 from .rl import redis_client
 
-# OpenAI client + model (expects OPENAI_API_KEY and OPENAI_MODEL=gpt-5 in env)
+# OpenAI client + model (expects OPENAI_API_KEY and OPENAI_MODEL in env)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
-MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
 
 
 def _first_text_from_response(resp) -> str:
@@ -41,11 +41,13 @@ def _safe(x, d=0.0):
 
 def hint(metric: str, context: dict) -> str:
     """
-    One short numeric sentence. Cached 5m (non-empty) / 30s (empty).
-    Uses Responses API (max_output_tokens) — compatible with gpt-5.
+    One short numeric sentence. Cached 10m (non-empty) / 60s (empty).
+    Uses Responses API (max_output_tokens) — compatible with gpt-4.
     """
     r = redis_client()
-    key = f"hint:v2:{metric}:{hash(json.dumps(context, sort_keys=True))}"
+    # Create more stable cache key by removing volatile fields
+    stable_context = {k: v for k, v in context.items() if k not in ['age_s', 'timestamp', 'request_id']}
+    key = f"hint:v3:{metric}:{hash(json.dumps(stable_context, sort_keys=True))}"
     cached = r.get(key)
     if cached is not None:
         return cached
@@ -66,11 +68,11 @@ def hint(metric: str, context: dict) -> str:
     except Exception:
         text = ""
 
-    # cache policy: non-empty for 5m; empty for 30s to recover quickly
+    # cache policy: non-empty for 10m; empty for 60s to recover quickly
     if text:
-        r.setex(key, 300, text)
+        r.setex(key, 600, text)  # 10m for successful responses
     else:
-        r.setex(key, 30, "")
+        r.setex(key, 60, "")     # 60s for empty responses
     return text
 
 
