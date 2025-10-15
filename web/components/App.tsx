@@ -308,12 +308,15 @@ function TopAlgos({session}:{session:Session|null}) {
   async function refresh(){
     try{
       setLoading(true); setError(null);
+      console.log('TopAlgos refresh - dataMode:', dataMode, 'historicalDate:', historicalDate);
       let arr: any[];
       if (dataMode === 'HISTORICAL' && historicalDate) {
         // Fetch historical data for specific date
         const r = await fetch(`${API}/api/v2/hist/plan?date=${historicalDate}&top=10`, { cache: 'no-store' });
+        console.log('Historical fetch response:', r.status, r.ok);
         if (r.ok) {
           arr = await r.json();
+          console.log('Historical data received:', arr?.length, 'rows');
           if (!Array.isArray(arr)) arr = [];
         } else {
           throw new Error('Failed to fetch historical data');
@@ -321,9 +324,12 @@ function TopAlgos({session}:{session:Session|null}) {
       } else {
         // Fetch live/current data
         arr = await fetchPlanRows();
+        console.log('Live data received:', arr?.length, 'rows');
       }
+      console.log('Setting rows:', arr);
       setRows(arr);
     }catch(e:any){
+      console.error('Refresh error:', e);
       setError(e?.message||'Load error');
     }finally{ setLoading(false); }
   }
@@ -347,7 +353,10 @@ function TopAlgos({session}:{session:Session|null}) {
       <div className="flex items-center gap-3">
         <ToDControl value={tod} onChange={setTod} onSaveDefault={saveTodDefault} defaultLabel={defaultLabel} />
         <button 
-          onClick={refresh} 
+          onClick={() => {
+            console.log('Run Scan clicked - dataMode:', dataMode, 'date:', historicalDate);
+            refresh();
+          }} 
           disabled={loading || (dataMode === 'HISTORICAL' && !historicalDate)} 
           className="rounded-xl bg-gradient-primary px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all-smooth shadow-card hover-lift">
           {loading && <Spinner size="sm" />}
@@ -433,7 +442,8 @@ function TopAlgos({session}:{session:Session|null}) {
       </div>
     )}
 
-    {(!loading || rows.length > 0) && (
+    {(!loading || rows.length > 0) && (<>
+      {console.log('Rendering table - rows.length:', rows.length, 'loading:', loading, 'dataMode:', dataMode)}
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card transition-opacity duration-300 animate-fadeIn">
       <table className="min-w-full text-sm">
         <thead className="bg-gradient-to-r from-slate-50 to-slate-100 text-left text-xs font-semibold text-slate-700">
@@ -491,7 +501,7 @@ function TopAlgos({session}:{session:Session|null}) {
         </tbody>
       </table>
     </div>
-    )}
+    </>)}
   </section>;
 }
 
