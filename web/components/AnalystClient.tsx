@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { API, j } from '@/lib/api';
+import { ContextualTips, ExplainableMetric, IndicatorInfo } from './ContextualTips';
 
 function Spinner({ size = 'sm' }: { size?: 'sm' | 'md' | 'lg' }) {
   const sizes = { sm: 'w-4 h-4', md: 'w-6 h-6', lg: 'w-8 h-8' };
@@ -301,6 +302,22 @@ export default function AnalystClient(){
         </div>
       )}
 
+      {/* AI Contextual Tips */}
+      {az && (
+        <div className="mt-4">
+          <ContextualTips 
+            contextType="analyst"
+            data={{
+              decision: az.decision,
+              confidence: az.confidence,
+              symbol: symbol,
+              mode: mode,
+              ...az
+            }}
+          />
+        </div>
+      )}
+
       {(mode === 'HIST' && bars.length > 0) || (mode === 'LIVE' && az) ? (
       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_360px]">
         <div>
@@ -321,6 +338,7 @@ export default function AnalystClient(){
               <div className="flex items-center gap-1.5">
                 <div className="w-6 h-0.5 bg-sky-500"></div>
                 <span>EMA 9</span>
+                <IndicatorInfo indicator="EMA" simple={true} />
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-6 h-0.5 bg-indigo-500"></div>
@@ -329,6 +347,7 @@ export default function AnalystClient(){
               <div className="flex items-center gap-1.5">
                 <div className="w-6 h-0.5 bg-amber-500"></div>
                 <span>VWAP</span>
+                <IndicatorInfo indicator="VWAP" simple={true} />
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-6 h-0.5 bg-zinc-900 border-dashed border-t-2"></div>
@@ -352,22 +371,54 @@ export default function AnalystClient(){
                 <Spinner size="md" />
               </div>
             )}
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Decision</div>
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Decision</div>
+              <button
+                onClick={async () => {
+                  if (!az) return;
+                  const response = await fetch(`${API}/api/contextual/explain-decision`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(az),
+                  });
+                  if (response.ok) {
+                    const result = await response.json();
+                    alert(`Why ${az.decision}?\n\n${result.data.why_this_decision}\n\nConfidence: ${result.data.confidence_explanation}\n\nNext Steps: ${result.data.next_steps}`);
+                  }
+                }}
+                className="text-indigo-500 hover:text-indigo-700 text-xs flex items-center gap-1"
+                title="Explain this decision"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+                Explain
+              </button>
+            </div>
             <div className="mt-2 flex items-baseline gap-3">
               <div className={`text-2xl font-black ${az?.decision==='BUY'?'text-emerald-600': az?.decision==='SELL'?'text-rose-600':'text-slate-800'}`}>{az?.decision || '—'}</div>
               <div className="text-sm font-medium text-slate-500">conf {az?.confidence ?? '—'}</div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
-                <div className="text-slate-500 font-medium">ΔTrigger</div>
+                <div className="flex items-center gap-1 text-slate-500 font-medium">
+                  <span>ΔTrigger</span>
+                  <IndicatorInfo indicator="Delta Trigger (BPS)" simple={true} />
+                </div>
                 <div className="text-sm font-bold text-slate-800 mt-1">{az? `${Number(az.risk.delta_trigger_bps).toFixed(0)} bps` : '—'}</div>
               </div>
               <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
-                <div className="text-slate-500 font-medium">R:R</div>
+                <div className="flex items-center gap-1 text-slate-500 font-medium">
+                  <span>R:R</span>
+                  <IndicatorInfo indicator="Risk:Reward Ratio" simple={true} />
+                </div>
                 <div className="text-sm font-bold text-slate-800 mt-1">{az? Number(az.risk.rr).toFixed(2) : '—'}</div>
               </div>
               <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
-                <div className="text-slate-500 font-medium">ATR</div>
+                <div className="flex items-center gap-1 text-slate-500 font-medium">
+                  <span>ATR</span>
+                  <IndicatorInfo indicator="ATR" simple={true} />
+                </div>
                 <div className="text-sm font-bold text-slate-800 mt-1">{az? Number(az.risk.atr).toFixed(2) : '—'}</div>
               </div>
               <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
