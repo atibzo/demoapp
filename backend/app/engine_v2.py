@@ -113,13 +113,31 @@ def _score_conf(factors: Dict[str,float], pol: Dict, regime: str, fresh_ok: bool
     return float(score), float(conf)
 
 def _universe_soft_reason(sym: str, pol: Dict) -> Optional[str]:
+    """
+    Check if a symbol is suitable for intraday trading in Top Algos.
+    Uses strict filtering to ensure only high-liquidity, intraday-suitable stocks.
+    
+    Returns:
+        Reason string if not suitable, None if suitable
+    """
+    from .universe import get_non_intraday_reason
+    
     mode = (pol.get("universe", {}).get("mode") or "strict").lower()
+    if mode == "off": 
+        return None
+    
+    # Check custom exclude patterns from policy
     pats = pol.get("universe", {}).get("exclude_patterns", [])
-    if mode == "off": return None
-    # cheap classifier by symbol text; you can enrich with instrument meta if you store it
-    non_intraday = any(pat in sym for pat in pats)
-    if non_intraday:
-        return "non_intraday" if mode in ("strict","soft") else None
+    if any(pat in sym for pat in pats):
+        return "non_intraday" if mode in ("strict", "soft") else None
+    
+    # Use comprehensive intraday check from universe module
+    reason = get_non_intraday_reason(sym)
+    if reason:
+        # In strict mode, block completely
+        # In soft mode, show but mark as blocked
+        return reason if mode in ("strict", "soft") else None
+    
     return None
 
 def plan(top_n: int = 10) -> Tuple[List[Dict], Dict]:

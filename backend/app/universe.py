@@ -245,19 +245,86 @@ def get_intraday_universe(limit: int = 300, exchange: str = "NSE") -> list[str]:
     return universe[:limit]
 
 
-def is_intraday_tradable(symbol: str) -> bool:
+def is_intraday_tradable(symbol: str, strict: bool = True) -> bool:
     """
     Check if a symbol is suitable for intraday trading.
+    
+    Args:
+        symbol: Symbol in EXCHANGE:SYMBOL format (e.g., NSE:INFY, NSE:BHEL-EQ)
+        strict: If True, checks against curated universe. If False, just checks series suffix.
+    
+    Returns:
+        True if symbol is suitable for intraday trading
+    """
+    symbol = symbol.upper().replace(" ", "")
+    
+    # Extract tradingsymbol without exchange prefix
+    if ":" in symbol:
+        _, tradingsymbol = symbol.split(":", 1)
+    else:
+        tradingsymbol = symbol
+    
+    # Check 1: Exclude trade-to-trade stocks (BE, BZ, etc.)
+    # These are NOT suitable for intraday
+    if tradingsymbol.endswith("-BE"):  # Trade-to-trade segment
+        return False
+    if tradingsymbol.endswith("-BZ"):  # Special series
+        return False
+    if tradingsymbol.endswith("-BL"):  # Blacklisted
+        return False
+    
+    # Check 2: If strict mode, must be in curated universe
+    if strict:
+        all_symbols = NSE_UNIVERSE + BSE_HIGH_VOLUME
+        return symbol in all_symbols
+    
+    # Check 3: For non-strict (Analyst), allow EQ series only
+    # This ensures liquidity even for stocks not in universe
+    if tradingsymbol.endswith("-EQ"):  # Regular equity - OK for intraday
+        return True
+    
+    # Check 4: If no suffix, assume it's equity and check if in universe
+    # (This handles symbols entered without -EQ suffix)
+    if not any(tradingsymbol.endswith(sfx) for sfx in ["-EQ", "-BE", "-BZ", "-BL"]):
+        all_symbols = NSE_UNIVERSE + BSE_HIGH_VOLUME
+        return symbol in all_symbols
+    
+    # Default: not suitable
+    return False
+
+
+def get_non_intraday_reason(symbol: str) -> str | None:
+    """
+    Get the reason why a symbol is not suitable for intraday trading.
     
     Args:
         symbol: Symbol in EXCHANGE:SYMBOL format
     
     Returns:
-        True if symbol is in the intraday universe
+        Reason string if not suitable, None if suitable for intraday
     """
     symbol = symbol.upper().replace(" ", "")
+    
+    # Extract tradingsymbol
+    if ":" in symbol:
+        _, tradingsymbol = symbol.split(":", 1)
+    else:
+        tradingsymbol = symbol
+    
+    # Check for specific exclusion reasons
+    if tradingsymbol.endswith("-BE"):
+        return "trade_to_trade"  # Trade-to-trade segment - not allowed for intraday
+    if tradingsymbol.endswith("-BZ"):
+        return "special_series"  # Special series - high risk
+    if tradingsymbol.endswith("-BL"):
+        return "blacklisted"  # Blacklisted
+    
+    # Check if in universe (for Top Algos filtering)
     all_symbols = NSE_UNIVERSE + BSE_HIGH_VOLUME
-    return symbol in all_symbols
+    if symbol not in all_symbols:
+        return "low_liquidity"  # Not in curated universe = lower liquidity
+    
+    return None  # Suitable for intraday
 
 
 def get_symbol_category(symbol: str) -> str:

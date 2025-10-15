@@ -10,8 +10,11 @@ def hist_bars(symbol: str, date: str, auto_fetch: bool = Query(default=True)):
     """
     Get historical bars for a symbol on a date.
     
+    UNIVERSAL: Works with ANY NSE/BSE stock, even those not suitable for intraday trading.
+    This endpoint does NOT filter by intraday-suitability - it's for data retrieval and analysis.
+    
     Args:
-        symbol: Stock symbol (e.g., NSE:INFY)
+        symbol: Stock symbol (e.g., NSE:INFY, NSE:BHEL-EQ, NSE:SOMETHING-BE)
         date: Date in YYYY-MM-DD format
         auto_fetch: If True, automatically fetch from Kite API if not cached (default: True)
     
@@ -58,9 +61,13 @@ def hist_analyze(symbol: str, date: str, time: str = Query(..., regex=r"^\d{2}:\
     Analyze a stock at a specific time on a historical date.
     Auto-fetches data from Kite API if not already cached.
     
-    This endpoint works independently - you can analyze ANY NSE/BSE stock on ANY date,
-    not just stocks that are in the "top algos" universe. Data is automatically 
-    fetched from Zerodha if not already cached.
+    UNIVERSAL ANALYZER: Works with ANY NSE/BSE stock on ANY date, regardless of:
+    - Whether it's in the Top Algos universe
+    - Whether it's suitable for intraday trading
+    - The series (EQ, BE, BZ, etc.)
+    
+    This is for ANALYSIS purposes - you can analyze any stock to understand its behavior,
+    even if it's not suitable for actual intraday trading.
     """
     from .hist import _fetch_and_cache_historical_bars
     from .kite import get_kite
