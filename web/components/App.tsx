@@ -137,12 +137,12 @@ function Spinner({ size = 'sm' }: { size?: 'sm' | 'md' | 'lg' }) {
 
 function Chip({ label, tone }:{label:string; tone:'ok'|'warn'|'error'|'neutral'}) {
   const t:any={
-    ok:'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300',
-    warn:'bg-amber-100 text-amber-700 ring-1 ring-amber-300',
-    error:'bg-rose-100 text-rose-700 ring-1 ring-rose-300',
-    neutral:'bg-zinc-100 text-zinc-700 ring-1 ring-zinc-300'
+    ok:'bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-700 ring-1 ring-emerald-200 shadow-sm',
+    warn:'bg-gradient-to-r from-amber-50 to-amber-100 text-amber-700 ring-1 ring-amber-200 shadow-sm',
+    error:'bg-gradient-to-r from-rose-50 to-rose-100 text-rose-700 ring-1 ring-rose-200 shadow-sm',
+    neutral:'bg-gradient-to-r from-slate-50 to-slate-100 text-slate-700 ring-1 ring-slate-200 shadow-sm'
   };
-  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${t[tone]}`}>{label}</span>;
+  return <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all-smooth hover:scale-105 ${t[tone]}`}>{label}</span>;
 }
 
 function ModeBanner({ mode }:{mode:Mode}) {
@@ -150,10 +150,13 @@ function ModeBanner({ mode }:{mode:Mode}) {
   const txt = mode==='HISTORICAL'
     ? 'Market is closed (IST). Showing recent historical data; advice is disabled.'
     : 'Market is open but no live ticks yet; advice is disabled.';
-  const cls = mode==='HISTORICAL' ? 'bg-zinc-100 text-zinc-700' : 'bg-amber-100 text-amber-800';
-  return <div className={`${cls} border-y border-zinc-200`}>
-    <div className="mx-auto max-w-[1200px] px-3 md:px-6 py-2 text-xs font-medium flex items-center gap-2">
-      <span className="rounded-full px-2 py-0.5 ring-1 ring-current">{mode}</span><span>{txt}</span>
+  const cls = mode==='HISTORICAL' 
+    ? 'bg-gradient-to-r from-slate-100 to-slate-50 text-slate-800 border-slate-200' 
+    : 'bg-gradient-to-r from-amber-100 to-amber-50 text-amber-900 border-amber-200';
+  return <div className={`${cls} border-y shadow-sm`}>
+    <div className="mx-auto max-w-[1200px] px-3 md:px-6 py-3 text-xs font-semibold flex items-center gap-3">
+      <span className="rounded-full px-3 py-1 ring-2 ring-current bg-white/50 backdrop-blur-sm">{mode}</span>
+      <span>{txt}</span>
     </div>
   </div>;
 }
@@ -187,25 +190,25 @@ function Hint({ metric, context }:{metric:string; context:any}) {
  * ------------------------------------------------------------------ */
 
 function Header({ session, onLogin }:{session:Session|null; onLogin:()=>void}) {
-  return <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white/90">
+  return <header className="sticky top-0 z-50 glass border-b border-white/20 shadow-soft backdrop-blur-xl">
     <div className="mx-auto max-w-[1200px] px-3 md:px-6">
-      <div className="flex h-14 items-center justify-between gap-3">
+      <div className="flex h-16 items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-900 text-white text-sm font-bold">IC</div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-primary text-white text-base font-bold shadow-elevated hover-lift cursor-pointer">IC</div>
           <div className="hidden md:block">
-            <div className="text-sm font-semibold tracking-tight">Intraday Co-Pilot</div>
-            <div className="text-[10px] text-zinc-500">Live-only • KiteTicker • NSE+BSE</div>
+            <div className="text-base font-bold tracking-tight bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Intraday Co-Pilot</div>
+            <div className="text-[11px] text-slate-500 font-medium">Live Trading • KiteTicker • NSE+BSE</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Chip label={`Zerodha ${session?.zerodha ? 'connected' : 'offline'}`} tone={session?.zerodha ? 'ok' : 'error'} />
           <Chip label="LLM ready" tone="ok" />
           <Chip label={`Ticker ${session?.ticker ? 'live' : 'stopped'}`} tone={session?.ticker ? 'ok' : 'warn'} />
-          <Chip label={`Market ${session?.market_open ? 'open' : 'closed'} (IST)`} tone={session?.market_open ? 'ok' : 'neutral'} />
+          <Chip label={`Market ${session?.market_open ? 'open' : 'closed'}`} tone={session?.market_open ? 'ok' : 'neutral'} />
           {session?.zerodha ? (
             <Chip label="Logged in" tone="ok" />
           ) : (
-            <button onClick={onLogin} className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white">Login with Zerodha</button>
+            <button onClick={onLogin} className="rounded-xl bg-gradient-primary px-4 py-2 text-xs font-bold text-white shadow-elevated hover-lift transition-all-smooth">Login with Zerodha</button>
           )}
         </div>
       </div>
@@ -215,11 +218,20 @@ function Header({ session, onLogin }:{session:Session|null; onLogin:()=>void}) {
 
 function Tabs({tab,setTab}:{tab:string; setTab:(t:string)=>void}) {
   const items=['Top Algos','Watch','Analyst','Journal','Policy','Config'];
-  return <nav className="border-b border-zinc-200 bg-white">
+  return <nav className="border-b border-slate-200 bg-white/60 backdrop-blur-sm">
     <div className="mx-auto max-w-[1200px] px-3 md:px-6">
-      <div className="flex flex-wrap gap-2 py-2">
+      <div className="flex flex-wrap gap-2 py-3">
         {items.map(t=>(
-          <button key={t} onClick={()=>setTab(t)} className={`px-3 py-2 rounded-xl text-sm ${tab===t?'bg-zinc-900 text-white':'text-zinc-700 hover:bg-zinc-100'}`}>{t}</button>
+          <button 
+            key={t} 
+            onClick={()=>setTab(t)} 
+            className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all-smooth ${
+              tab===t
+                ? 'bg-gradient-primary text-white shadow-card hover-lift'
+                : 'text-slate-700 hover:bg-white hover:shadow-soft'
+            }`}>
+            {t}
+          </button>
         ))}
       </div>
     </div>
@@ -264,6 +276,7 @@ function ToDControl({
 }
 
 function TopAlgos({session}:{session:Session|null}) {
+  console.log('📊 TopAlgos component mounting');
   const [rows,setRows]=useState<any[]>([]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
@@ -271,6 +284,7 @@ function TopAlgos({session}:{session:Session|null}) {
   const [dataMode,setDataMode]=useState<'LIVE'|'HISTORICAL'>('LIVE');
   const [historicalDate,setHistoricalDate]=useState<string>('');
   const defaultLabel='Post-11';
+  console.log('📊 TopAlgos initial state - dataMode:', dataMode, 'historicalDate:', historicalDate);
 
   useEffect(()=>{
     const onStorage = (e: StorageEvent) => { if (e.key==='policy_rev_hint') refresh(); };
@@ -296,12 +310,15 @@ function TopAlgos({session}:{session:Session|null}) {
   async function refresh(){
     try{
       setLoading(true); setError(null);
+      console.log('TopAlgos refresh - dataMode:', dataMode, 'historicalDate:', historicalDate);
       let arr: any[];
       if (dataMode === 'HISTORICAL' && historicalDate) {
         // Fetch historical data for specific date
         const r = await fetch(`${API}/api/v2/hist/plan?date=${historicalDate}&top=10`, { cache: 'no-store' });
+        console.log('Historical fetch response:', r.status, r.ok);
         if (r.ok) {
           arr = await r.json();
+          console.log('Historical data received:', arr?.length, 'rows');
           if (!Array.isArray(arr)) arr = [];
         } else {
           throw new Error('Failed to fetch historical data');
@@ -309,9 +326,12 @@ function TopAlgos({session}:{session:Session|null}) {
       } else {
         // Fetch live/current data
         arr = await fetchPlanRows();
+        console.log('Live data received:', arr?.length, 'rows');
       }
+      console.log('Setting rows:', arr);
       setRows(arr);
     }catch(e:any){
+      console.error('Refresh error:', e);
       setError(e?.message||'Load error');
     }finally{ setLoading(false); }
   }
@@ -325,26 +345,35 @@ function TopAlgos({session}:{session:Session|null}) {
     // Don't auto-refresh for historical mode
   },[session?.mode, dataMode]);
 
-  return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
-    <div className="mb-3 flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <div className="text-sm font-semibold">Top Algos</div>
+  return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
+    {/* DEBUG INFO - REMOVE LATER */}
+    <div className="mb-4 rounded-xl bg-yellow-100 border-2 border-yellow-500 p-3 text-xs font-mono">
+      <div>🐛 DEBUG: dataMode={dataMode} | historicalDate={historicalDate} | rows={rows.length} | loading={loading ? 'true' : 'false'}</div>
+    </div>
+    
+    <div className="mb-4 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Top Algos</div>
         <Chip label={dataMode === 'HISTORICAL' && historicalDate ? `Historical (${historicalDate})` : session?.mode||'HISTORICAL'} 
               tone={dataMode === 'HISTORICAL' ? 'neutral' : session?.mode==='LIVE'?'ok':session?.mode==='WAITING'?'warn':'neutral'} />
       </div>
       <div className="flex items-center gap-3">
         <ToDControl value={tod} onChange={setTod} onSaveDefault={saveTodDefault} defaultLabel={defaultLabel} />
         <button 
-          onClick={refresh} 
+          onClick={() => {
+            alert(`🔍 Button clicked!\ndataMode: ${dataMode}\ndate: ${historicalDate}\ndisabled: ${loading || (dataMode === 'HISTORICAL' && !historicalDate)}`);
+            console.log('Run Scan clicked - dataMode:', dataMode, 'date:', historicalDate);
+            refresh();
+          }} 
           disabled={loading || (dataMode === 'HISTORICAL' && !historicalDate)} 
-          className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all hover:bg-zinc-800">
+          className="rounded-xl bg-gradient-primary px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all-smooth shadow-card hover-lift">
           {loading && <Spinner size="sm" />}
           {loading ? 'Scanning...' : 'Run Scan'}
         </button>
       </div>
     </div>
 
-    <div className="mb-3 rounded-xl border border-zinc-200 bg-white p-3">
+    <div className="mb-4 rounded-2xl border border-slate-200 bg-white shadow-card p-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-sm">
           <label className="inline-flex items-center gap-1.5 cursor-pointer">
@@ -393,12 +422,17 @@ function TopAlgos({session}:{session:Session|null}) {
       </div>
     </div>
 
-    {error && <div className="mb-2 rounded-xl bg-amber-100 text-amber-800 px-3 py-2 text-sm animate-pulse">{error}</div>}
+    {error && <div className="mb-4 rounded-2xl bg-gradient-to-r from-amber-50 to-amber-100 border border-amber-200 text-amber-900 px-4 py-3 text-sm font-medium shadow-sm animate-fadeIn flex items-center gap-2">
+      <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+      </svg>
+      {error}
+    </div>}
 
     {dataMode === 'HISTORICAL' && !historicalDate && (
-      <div className="mb-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 px-3 py-2 text-sm animate-fadeIn">
-        <div className="flex items-center gap-2">
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+      <div className="mb-4 rounded-2xl bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 text-blue-900 px-4 py-3 text-sm font-medium shadow-sm animate-fadeIn">
+        <div className="flex items-center gap-3">
+          <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
           </svg>
           <span>Select a date above and click "Run Scan" to view historical trading opportunities</span>
@@ -407,18 +441,20 @@ function TopAlgos({session}:{session:Session|null}) {
     )}
 
     {loading && rows.length === 0 && (
-      <div className="rounded-2xl border border-zinc-200 p-8 text-center">
-        <div className="flex flex-col items-center gap-3">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-12 text-center animate-fadeIn">
+        <div className="flex flex-col items-center gap-4">
           <Spinner size="lg" />
-          <div className="text-sm text-zinc-600">{dataMode === 'HISTORICAL' ? 'Loading historical data...' : 'Scanning for opportunities...'}</div>
+          <div className="text-base font-semibold text-slate-700">{dataMode === 'HISTORICAL' ? 'Loading historical data...' : 'Scanning for opportunities...'}</div>
+          <div className="text-xs text-slate-500">Please wait while we analyze the market</div>
         </div>
       </div>
     )}
 
-    {(!loading || rows.length > 0) && (
-    <div className="overflow-hidden rounded-2xl border border-zinc-200 transition-opacity duration-300">
+    {(!loading || rows.length > 0) && (<>
+      {console.log('Rendering table - rows.length:', rows.length, 'loading:', loading, 'dataMode:', dataMode)}
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card transition-opacity duration-300 animate-fadeIn">
       <table className="min-w-full text-sm">
-        <thead className="bg-zinc-50 text-left text-xs text-zinc-600">
+        <thead className="bg-gradient-to-r from-slate-50 to-slate-100 text-left text-xs font-semibold text-slate-700">
           <tr>
             <th className="px-3 py-2">#</th>
             <th className="px-3 py-2">Symbol</th>
@@ -435,7 +471,7 @@ function TopAlgos({session}:{session:Session|null}) {
         </thead>
         <tbody>
           {rows.map((r:any,i:number)=>(
-            <tr key={r.symbol||i} className={`border-t border-zinc-100 ${r.readiness==='Stale'?'opacity-50':''}`}>
+            <tr key={r.symbol||i} className={`border-t border-slate-100 transition-all-smooth hover:bg-slate-50/50 ${r.readiness==='Stale'?'opacity-50':''}`}>
               <td className="px-3 py-2">{i+1}</td>
               <td className="px-3 py-2 font-semibold">{r.symbol}</td>
               <td className={`px-3 py-2 ${r.side==='long'?'text-emerald-700':'text-rose-700'}`}>{r.side}</td>
@@ -453,8 +489,11 @@ function TopAlgos({session}:{session:Session|null}) {
               </td>
               <td className="px-3 py-2">
                 <Link 
-                  className="underline text-blue-600 hover:text-blue-800 transition-colors" 
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs transition-all-smooth hover-lift" 
                   href={`/analyst?symbol=${encodeURIComponent(r.symbol)}${dataMode === 'HISTORICAL' && historicalDate ? `&date=${historicalDate}` : ''}`}>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
                   Open
                 </Link>
               </td>
@@ -470,7 +509,7 @@ function TopAlgos({session}:{session:Session|null}) {
         </tbody>
       </table>
     </div>
-    )}
+    </>)}
   </section>;
 }
 
@@ -495,36 +534,41 @@ function Watch({session}:{session:Session|null}) {
     }, pollInterval);
     return ()=>clearInterval(id);
   },[symbols, session?.mode]);
-  return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
-    <div className="mb-2 flex gap-2 items-center">
-      <input placeholder="Add EXCH:SYMBOL (e.g., NSE:INFY)" onKeyDown={e=>{ if(e.key==='Enter'){ add((e.target as any).value); (e.target as any).value=''; } }} className="w-72 rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-      <span className="text-xs text-zinc-500">Polling every 3 s</span>
+  return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
+    <div className="mb-4 flex gap-3 items-center">
+      <input placeholder="Add EXCH:SYMBOL (e.g., NSE:INFY)" onKeyDown={e=>{ if(e.key==='Enter'){ add((e.target as any).value); (e.target as any).value=''; } }} className="w-80 rounded-xl border border-slate-300 px-4 py-2.5 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+      <span className="flex items-center gap-2 text-xs text-slate-500">
+        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+          <circle cx="10" cy="10" r="10" className="text-emerald-500 animate-pulse"/>
+        </svg>
+        Polling every 3s
+      </span>
     </div>
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {symbols.map(s=>(
-        <div key={s} className="rounded-xl border border-zinc-200 p-3">
-          <div className="text-sm font-semibold">{s}</div>
-          <div className="grid grid-cols-2 gap-2 text-xs mt-2">
-            <div className="rounded-lg bg-zinc-50 p-2">
-              <div className="text-[10px] text-zinc-500">VWAPΔ</div>
-              <span className="font-mono">{snaps[s]?.vwap_delta_pct ?? '—'}%</span>
+        <div key={s} className="rounded-2xl border border-slate-200 bg-white shadow-card p-4 hover-lift transition-all-smooth animate-scaleIn">
+          <div className="text-base font-bold text-slate-800">{s}</div>
+          <div className="grid grid-cols-2 gap-2 text-xs mt-3">
+            <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">VWAPΔ</div>
+              <span className="font-mono text-sm font-bold text-slate-800">{snaps[s]?.vwap_delta_pct ?? '—'}%</span>
               <Hint metric="vwap_delta" context={{symbol:s, ...snaps[s], mode:session?.mode}}/>
             </div>
-            <div className="rounded-lg bg-zinc-50 p-2">
-              <div className="text-[10px] text-zinc-500">VolX</div>
-              <span className="font-mono">{snaps[s]?.minute_vol_multiple ?? '—'}×</span>
+            <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">VolX</div>
+              <span className="font-mono text-sm font-bold text-slate-800">{snaps[s]?.minute_vol_multiple ?? '—'}×</span>
               <Hint metric="volx" context={{symbol:s, ...snaps[s], mode:session?.mode}}/>
             </div>
-            <div className="rounded-lg bg-zinc-50 p-2">
-              <div className="text-[10px] text-zinc-500">EMA9/21</div>
-              <span className="font-mono">
+            <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">EMA9/21</div>
+              <span className="font-mono text-sm font-bold text-slate-800">
                 {snaps[s]? (snaps[s].ema9>snaps[s].ema21?'↑':'↓') : '—'} {snaps[s]?.ema9 ?? '—'} / {snaps[s]?.ema21 ?? '—'}
               </span>
               <Hint metric="ema" context={{symbol:s, ema9:snaps[s]?.ema9, ema21:snaps[s]?.ema21, mode:session?.mode}}/>
             </div>
-            <div className="rounded-lg bg-zinc-50 p-2">
-              <div className="text-[10px] text-zinc-500">RSI14</div>
-              <span className="font-mono">{snaps[s]?.rsi14 ?? '—'}</span>
+            <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">RSI14</div>
+              <span className="font-mono text-sm font-bold text-slate-800">{snaps[s]?.rsi14 ?? '—'}</span>
               <Hint metric="rsi" context={{symbol:s, rsi14:snaps[s]?.rsi14, mode:session?.mode}}/>
             </div>
           </div>
@@ -561,24 +605,24 @@ function Journal(){
     }
   }
   useEffect(()=>{ refresh(); },[]);
-  return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
+  return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
     <button 
-      className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-2 transition-all hover:bg-zinc-800" 
+      className="rounded-xl bg-gradient-primary px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 flex items-center gap-2 transition-all-smooth shadow-card hover-lift" 
       onClick={refresh}
       disabled={loading}>
       {loading && <Spinner size="sm" />}
       {loading ? 'Refreshing...' : 'Refresh'}
     </button>
-    <div className="overflow-hidden rounded-xl border border-zinc-200 mt-3">
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card mt-4 animate-fadeIn">
       <table className="min-w-full text-sm">
-        <thead className="bg-zinc-50 text-left text-xs text-zinc-600">
-          <tr><th className="px-3 py-2">Symbol</th><th className="px-3 py-2">Action</th><th className="px-3 py-2">Note</th></tr>
+        <thead className="bg-gradient-to-r from-slate-50 to-slate-100 text-left text-xs font-semibold text-slate-700">
+          <tr><th className="px-4 py-3">Symbol</th><th className="px-4 py-3">Action</th><th className="px-4 py-3">Note</th></tr>
         </thead>
         <tbody>{rows.map((r:any,i:number)=>
-          <tr key={i} className="border-t border-zinc-100">
-            <td className="px-3 py-2">{r.symbol}</td>
-            <td className="px-3 py-2">{r.action}</td>
-            <td className="px-3 py-2">{r.note}</td>
+          <tr key={i} className="border-t border-slate-100 transition-all-smooth hover:bg-slate-50/50">
+            <td className="px-4 py-3 font-semibold">{r.symbol}</td>
+            <td className="px-4 py-3">{r.action}</td>
+            <td className="px-4 py-3">{r.note}</td>
           </tr>)}
         </tbody>
       </table>
@@ -613,29 +657,29 @@ function Config() {
     }
   }
   useEffect(()=>{ load(); },[]);
-  return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
-    <div className="grid gap-3 max-w-xl">
-      <div>
-        <div className="text-sm font-semibold">Pinned symbols</div>
-        <input value={pinText} onChange={e=>setPinText(e.target.value)} placeholder="RELIANCE,INFY,ICICIBANK or EXCH:SYMBOL" className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-        <div className="text-xs text-zinc-500 mt-1">Use EXCH:SYMBOL when ambiguous across exchanges.</div>
+  return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
+    <div className="grid gap-4 max-w-2xl">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-5">
+        <div className="text-sm font-bold text-slate-800 mb-2">Pinned symbols</div>
+        <input value={pinText} onChange={e=>setPinText(e.target.value)} placeholder="RELIANCE,INFY,ICICIBANK or EXCH:SYMBOL" className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+        <div className="text-xs text-slate-500 mt-2">Use EXCH:SYMBOL when ambiguous across exchanges.</div>
       </div>
-      <div>
-        <div className="text-sm font-semibold">Active universe limit</div>
-        <input type="number" value={limit} onChange={e=>setLimit(parseInt(e.target.value||'300'))} className="w-32 rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-5">
+        <div className="text-sm font-bold text-slate-800 mb-2">Active universe limit</div>
+        <input type="number" value={limit} onChange={e=>setLimit(parseInt(e.target.value||'300'))} className="w-40 rounded-xl border border-slate-300 px-4 py-2.5 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-3">
         <button 
           onClick={save} 
           disabled={saving}
-          className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-2 transition-all hover:bg-zinc-800">
+          className="rounded-xl bg-gradient-primary px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 flex items-center gap-2 transition-all-smooth shadow-card hover-lift">
           {saving && <Spinner size="sm" />}
           {saving ? 'Saving...' : 'Save'}
         </button>
         <button 
           onClick={load} 
           disabled={loading}
-          className="rounded-xl bg-white px-3 py-2 text-xs font-semibold ring-1 ring-zinc-300 disabled:opacity-50 flex items-center gap-2 transition-all hover:bg-zinc-50">
+          className="rounded-xl bg-white px-4 py-2.5 text-xs font-bold border border-slate-300 text-slate-700 disabled:opacity-50 flex items-center gap-2 transition-all-smooth shadow-sm hover-lift">
           {loading && <Spinner size="sm" />}
           {loading ? 'Loading...' : 'Reload'}
         </button>
@@ -691,20 +735,20 @@ function PolicyForm() {
   const str  = (v:any)=> Array.isArray(v)? v.join(', ') : (v ?? '');
 
   return (
-    <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6 space-y-6">
+    <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8 space-y-6">
       <div className="flex items-center gap-3">
         <button 
           onClick={save} 
           disabled={saving} 
-          className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-2 transition-all hover:bg-zinc-800">
+          className="rounded-xl bg-gradient-primary px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 flex items-center gap-2 transition-all-smooth shadow-card hover-lift">
           {saving && <Spinner size="sm" />}
           {saving ? 'Saving...' : 'Save'}
         </button>
-        {typeof rev === 'number' && <div className="text-xs text-zinc-500">rev {rev}</div>}
+        {typeof rev === 'number' && <div className="text-sm font-semibold text-slate-600">rev {rev}</div>}
       </div>
 
-      <div className="border rounded p-4 space-y-3">
-        <div className="font-medium">Universe</div>
+      <div className="border border-slate-200 rounded-2xl bg-white shadow-card p-5 space-y-4">
+        <div className="text-lg font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Universe</div>
         <div className="grid grid-cols-2 gap-3">
           <L label="Exchange"><input className="input" value={body.universe?.exchange ?? 'NSE'} onChange={e=>upd(['universe','exchange'], e.target.value)} /></L>
           <L label="Prefer exchange when duplicate"><input className="input" value={body.universe?.prefer_exchange ?? 'NSE'} onChange={e=>upd(['universe','prefer_exchange'], e.target.value)} /></L>
@@ -723,8 +767,8 @@ function PolicyForm() {
         </div>
       </div>
 
-      <div className="border rounded p-4 space-y-3">
-        <div className="font-medium">Entry & Freshness</div>
+      <div className="border border-slate-200 rounded-2xl bg-white shadow-card p-5 space-y-4">
+        <div className="text-lg font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Entry & Freshness</div>
         <div className="grid grid-cols-3 gap-3">
           <L label="Entry start (HH:MM)"><input className="input" value={body.entry_window?.start ?? '11:00'} onChange={e=>upd(['entry_window','start'], e.target.value)} /></L>
           <L label="Entry end (HH:MM)"><input className="input" value={body.entry_window?.end ?? '15:10'} onChange={e=>upd(['entry_window','end'], e.target.value)} /></L>
@@ -732,8 +776,8 @@ function PolicyForm() {
         </div>
       </div>
 
-      <div className="border rounded p-4 space-y-3">
-        <div className="font-medium">Scoring weights</div>
+      <div className="border border-slate-200 rounded-2xl bg-white shadow-card p-5 space-y-4">
+        <div className="text-lg font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Scoring weights</div>
         <div className="grid grid-cols-5 gap-3">
           {(['trend','pullback','vwap','breakout','volume'] as const).map(k=>(
             <L key={k} label={k}><Num value={body.weights?.[k] ?? 1.0} step={0.1} onChange={v=>upd(['weights',k], v)} /></L>
@@ -741,8 +785,8 @@ function PolicyForm() {
         </div>
       </div>
 
-      <div className="border rounded p-4 space-y-3">
-        <div className="font-medium">Bracket tuning (ATR-based)</div>
+      <div className="border border-slate-200 rounded-2xl bg-white shadow-card p-5 space-y-4">
+        <div className="text-lg font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Bracket tuning (ATR-based)</div>
         <div className="grid grid-cols-4 gap-3">
           <L label="Entry chase max (ATR)"><Num value={body.bracket?.entry_chase_atr ?? 0.15} step={0.05} onChange={v=>upd(['bracket','entry_chase_atr'], v)} /></L>
           <L label="TP1 (ATR)"><Num value={body.bracket?.tp1_atr ?? 0.75} step={0.05} onChange={v=>upd(['bracket','tp1_atr'], v)} /></L>
@@ -751,8 +795,8 @@ function PolicyForm() {
         </div>
       </div>
 
-      <div className="border rounded p-4 space-y-2">
-        <div className="font-medium">Thresholds (legacy JSON)</div>
+      <div className="border border-slate-200 rounded-2xl bg-white shadow-card p-5 space-y-3">
+        <div className="text-lg font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Thresholds (legacy JSON)</div>
         <textarea
           className="input h-48 font-mono"
           value={JSON.stringify(body.thresholds ?? {}, null, 2)}
@@ -769,8 +813,8 @@ function PolicyForm() {
 
 function L({label, children}:{label:string; children:any}) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs text-zinc-600">{label}</span>
+    <label className="flex flex-col gap-2">
+      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">{label}</span>
       {children}
     </label>
   );
@@ -784,6 +828,7 @@ function Num({value, onChange, step=1}:{value:number; onChange:(v:number)=>void;
  * ------------------------------------------------------------------ */
 
 export default function App() {
+  console.log('🚀 App component mounting');
   const [session, setSession] = useState<Session | null>(null);
   const [tab, setTab] = useState('Top Algos');
   const lastRevRef = useRef<number | null>(null);
@@ -813,7 +858,7 @@ export default function App() {
   }, [session?.mode]);
 
   return (
-    <div className="min-h-screen w-full bg-zinc-50">
+    <div className="min-h-screen w-full">
       <Header session={session} onLogin={login} />
       {session && <ModeBanner mode={session.mode} />}
       <Tabs tab={tab} setTab={setTab} />

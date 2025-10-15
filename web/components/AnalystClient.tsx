@@ -173,10 +173,10 @@ export default function AnalystClient(){
     const er = az?.action?.entry_range;
 
     return (
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="w-full h-[340px] bg-white rounded-xl border border-zinc-200">
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="w-full h-[340px] bg-gradient-to-br from-white to-slate-50 rounded-2xl border border-slate-200 shadow-card">
         {[0,1,2,3,4].map(i=>{
           const y = pad + i*(H-2*pad)/4;
-          return <line key={i} x1={pad} x2={W-pad} y1={y} y2={y} stroke="#eee" strokeWidth="1"/>;
+          return <line key={i} x1={pad} x2={W-pad} y1={y} y2={y} stroke="#e2e8f0" strokeWidth="1" opacity="0.5"/>;
         })}
         {view.map((b, i)=>{
           const x = pad + i*xw;
@@ -186,44 +186,49 @@ export default function AnalystClient(){
           const bodyH = Math.max(1, bot-top);
           return (
             <g key={i}>
-              <line x1={x+xw*0.5} x2={x+xw*0.5} y1={yH} y2={yL} stroke="#999" />
-              <rect x={x + xw*0.15} y={top} width={xw*0.7} height={bodyH} fill={up?"#16a34a":"#dc2626"} />
+              <line x1={x+xw*0.5} x2={x+xw*0.5} y1={yH} y2={yL} stroke="#94a3b8" strokeWidth="1.5" />
+              <rect x={x + xw*0.15} y={top} width={xw*0.7} height={bodyH} fill={up?"#10b981":"#ef4444"} opacity="0.9" />
             </g>
           );
         })}
-        <polyline fill="none" stroke="#0ea5e9" strokeWidth="1.5"
-          points={e9.map((v,i)=>`${pad+i*xw},${scaleY(v)}`).join(' ')} />
-        <polyline fill="none" stroke="#6366f1" strokeWidth="1.2"
-          points={e21.map((v,i)=>`${pad+i*xw},${scaleY(v)}`).join(' ')} />
-        <polyline fill="none" stroke="#f59e0b" strokeWidth="1"
-          points={vwap.map((v,i)=>`${pad+i*xw},${scaleY(v)}`).join(' ')} />
-        {typeof tr==='number' && <line x1={pad} x2={W-pad} y1={scaleY(tr)} y2={scaleY(tr)} stroke="#111" strokeDasharray="4 2" />}
+        <polyline fill="none" stroke="#06b6d4" strokeWidth="2"
+          points={e9.map((v,i)=>`${pad+i*xw},${scaleY(v)}`).join(' ')} opacity="0.9" />
+        <polyline fill="none" stroke="#6366f1" strokeWidth="2"
+          points={e21.map((v,i)=>`${pad+i*xw},${scaleY(v)}`).join(' ')} opacity="0.8" />
+        <polyline fill="none" stroke="#f59e0b" strokeWidth="2"
+          points={vwap.map((v,i)=>`${pad+i*xw},${scaleY(v)}`).join(' ')} opacity="0.85" />
+        {typeof tr==='number' && <line x1={pad} x2={W-pad} y1={scaleY(tr)} y2={scaleY(tr)} stroke="#334155" strokeWidth="2" strokeDasharray="6 3" />}
         {er && <rect x={pad} width={W-2*pad} y={scaleY(er[1])} height={Math.abs(scaleY(er[0])-scaleY(er[1]))}
-                     fill="#0ea5e922" stroke="#0ea5e9" />}
-        {typeof st==='number' && <line x1={pad} x2={W-pad} y1={scaleY(st)} y2={scaleY(st)} stroke="#dc2626" strokeWidth="1.5" />}
-        {typeof t1==='number' && <line x1={pad} x2={W-pad} y1={scaleY(t1)} y2={scaleY(t1)} stroke="#16a34a" strokeDasharray="3 2" />}
-        {typeof t2==='number' && <line x1={pad} x2={W-pad} y1={scaleY(t2)} y2={scaleY(t2)} stroke="#16a34a" strokeWidth="1.5" />}
-        {typeof tr==='number' && <text x={W-pad} y={scaleY(tr)-2} textAnchor="end" fontSize="10" fill="#111">Trigger {fmt(tr)}</text>}
-        {typeof st==='number' && <text x={W-pad} y={scaleY(st)-2} textAnchor="end" fontSize="10" fill="#dc2626">Stop {fmt(st)}</text>}
-        {typeof t1==='number' && <text x={W-pad} y={scaleY(t1)-2} textAnchor="end" fontSize="10" fill="#16a34a">TP1 {fmt(t1)}</text>}
-        {typeof t2==='number' && <text x={W-pad} y={scaleY(t2)-2} textAnchor="end" fontSize="10" fill="#16a34a">TP2 {fmt(t2)}</text>}
+                     fill="#06b6d433" stroke="#06b6d4" strokeWidth="1.5" />}
+        {typeof st==='number' && <line x1={pad} x2={W-pad} y1={scaleY(st)} y2={scaleY(st)} stroke="#ef4444" strokeWidth="2.5" />}
+        {typeof t1==='number' && <line x1={pad} x2={W-pad} y1={scaleY(t1)} y2={scaleY(t1)} stroke="#10b981" strokeWidth="1.5" strokeDasharray="4 2" />}
+        {typeof t2==='number' && <line x1={pad} x2={W-pad} y1={scaleY(t2)} y2={scaleY(t2)} stroke="#10b981" strokeWidth="2.5" />}
+        {typeof tr==='number' && <text x={W-pad} y={scaleY(tr)-4} textAnchor="end" fontSize="11" fontWeight="600" fill="#334155">Trigger {fmt(tr)}</text>}
+        {typeof st==='number' && <text x={W-pad} y={scaleY(st)-4} textAnchor="end" fontSize="11" fontWeight="600" fill="#ef4444">Stop {fmt(st)}</text>}
+        {typeof t1==='number' && <text x={W-pad} y={scaleY(t1)-4} textAnchor="end" fontSize="11" fontWeight="600" fill="#10b981">TP1 {fmt(t1)}</text>}
+        {typeof t2==='number' && <text x={W-pad} y={scaleY(t2)-4} textAnchor="end" fontSize="11" fontWeight="600" fill="#10b981">TP2 {fmt(t2)}</text>}
       </svg>
     );
   }, [bars, ix, az?.action]);
 
   return (
-    <div className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
-      <div className="flex items-center gap-2">
-        <Link href="/" className="text-sm underline">← Home</Link>
-        <div className="text-sm font-semibold ml-2">Analyst</div>
+    <div className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
+      <div className="flex items-center gap-3 mb-4">
+        <Link href="/" className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-all-smooth shadow-soft hover-lift">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Home
+        </Link>
+        <div className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Analyst</div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-3">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <input 
           value={symbol} 
           onChange={e=>setSymbol(e.target.value)} 
           placeholder="Enter symbol (e.g., NSE:INFY)"
-          className="rounded-xl border border-zinc-300 px-3 py-2 text-sm w-56 focus:ring-2 focus:ring-zinc-900 focus:border-transparent" />
+          className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm w-64 focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm" />
         <div className="flex items-center gap-2 text-sm">
           <label className="inline-flex items-center gap-1.5 cursor-pointer">
             <input type="radio" checked={mode==='LIVE'} onChange={()=>{setMode('LIVE'); setBars([]); setAz(null);}} className="cursor-pointer" />
@@ -241,11 +246,11 @@ export default function AnalystClient(){
               value={date} 
               onChange={e=>setDate(e.target.value)}
               max={new Date().toISOString().split('T')[0]}
-              className="rounded-xl border border-zinc-300 px-3 py-2 text-sm focus:ring-2 focus:ring-zinc-900 focus:border-transparent" />
+              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm" />
             <button 
               onClick={loadDay} 
               disabled={!date||loadingDay} 
-              className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all hover:bg-zinc-800">
+              className="rounded-xl bg-gradient-primary px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all-smooth shadow-card hover-lift">
               {loadingDay && <Spinner size="sm" />}
               {loadingDay ? 'Loading...' : 'Load Day'}
             </button>
@@ -284,7 +289,7 @@ export default function AnalystClient(){
       )}
 
       {mode==='HIST' && bars.length>0 && (
-        <div className="mt-3 rounded-xl border border-zinc-200 p-3">
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-card p-4">
           <div className="flex items-center justify-between text-xs text-zinc-600">
             <span>{HHMM(bars[0].ts)}</span>
             <span className="font-mono">{HHMM(bars[ix].ts)}</span>
@@ -341,27 +346,39 @@ export default function AnalystClient(){
           )}
         </div>
         <div className="space-y-3">
-          <div className="rounded-xl border border-zinc-200 p-3 relative">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-4 relative">
             {loadingAnalysis && (
-              <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl">
+              <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center rounded-2xl">
                 <Spinner size="md" />
               </div>
             )}
-            <div className="text-[11px] text-zinc-500">Decision</div>
-            <div className="mt-1 flex items-baseline gap-2">
-              <div className={`text-xl font-bold ${az?.decision==='BUY'?'text-emerald-700': az?.decision==='SELL'?'text-rose-700':'text-zinc-800'}`}>{az?.decision || '—'}</div>
-              <div className="text-xs text-zinc-500">conf {az?.confidence ?? '—'}</div>
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Decision</div>
+            <div className="mt-2 flex items-baseline gap-3">
+              <div className={`text-2xl font-black ${az?.decision==='BUY'?'text-emerald-600': az?.decision==='SELL'?'text-rose-600':'text-slate-800'}`}>{az?.decision || '—'}</div>
+              <div className="text-sm font-medium text-slate-500">conf {az?.confidence ?? '—'}</div>
             </div>
-            <div className="mt-1 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded bg-zinc-50 p-2">ΔTrigger {az? `${Number(az.risk.delta_trigger_bps).toFixed(0)} bps` : '—'}</div>
-              <div className="rounded bg-zinc-50 p-2">R:R {az? Number(az.risk.rr).toFixed(2) : '—'}</div>
-              <div className="rounded bg-zinc-50 p-2">ATR {az? Number(az.risk.atr).toFixed(2) : '—'}</div>
-              <div className="rounded bg-zinc-50 p-2">Regime {az?.meta?.regime ?? '—'}</div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
+                <div className="text-slate-500 font-medium">ΔTrigger</div>
+                <div className="text-sm font-bold text-slate-800 mt-1">{az? `${Number(az.risk.delta_trigger_bps).toFixed(0)} bps` : '—'}</div>
+              </div>
+              <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
+                <div className="text-slate-500 font-medium">R:R</div>
+                <div className="text-sm font-bold text-slate-800 mt-1">{az? Number(az.risk.rr).toFixed(2) : '—'}</div>
+              </div>
+              <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
+                <div className="text-slate-500 font-medium">ATR</div>
+                <div className="text-sm font-bold text-slate-800 mt-1">{az? Number(az.risk.atr).toFixed(2) : '—'}</div>
+              </div>
+              <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
+                <div className="text-slate-500 font-medium">Regime</div>
+                <div className="text-sm font-bold text-slate-800 mt-1">{az?.meta?.regime ?? '—'}</div>
+              </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-200 p-3">
-            <div className="text-[11px] text-zinc-500">Trade Bracket</div>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-4">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Trade Bracket</div>
             <div className="mt-1 text-sm grid gap-1">
               <div>Trigger: <span className="font-mono">{fmt(az?.action?.trigger)}</span></div>
               <div>Entry:   <span className="font-mono">{az? `${fmt(az.action.entry_range[0])} – ${fmt(az.action.entry_range[1])}`:'—'}</span></div>
@@ -371,13 +388,13 @@ export default function AnalystClient(){
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-200 p-3 relative">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-4 relative">
             {loadingWhatif && (
-              <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl">
+              <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center rounded-2xl">
                 <Spinner size="md" />
               </div>
             )}
-            <div className="text-[11px] text-zinc-500">Position Size</div>
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Position Size</div>
             <div className="mt-2 flex items-center gap-2">
               <span className="text-xs">Risk ₹</span>
               <input type="number" value={riskAmt} onChange={e=>setRiskAmt(parseFloat(e.target.value||'0'))}
@@ -391,8 +408,8 @@ export default function AnalystClient(){
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-200 p-3">
-            <div className="text-[11px] text-zinc-500">Checklist</div>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-4">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Checklist</div>
             <ul className="mt-1 text-sm space-y-1">
               <li>VWAPΔ {az?.why?.checks?.['VWAPΔ'] ? '✓' : '✗'}</li>
               <li>VolX {az?.why?.checks?.['VolX'] ? '✓' : '✗'}</li>
