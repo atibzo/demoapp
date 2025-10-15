@@ -5,6 +5,16 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { API, j } from '@/lib/api';
 
+function Spinner({ size = 'sm' }: { size?: 'sm' | 'md' | 'lg' }) {
+  const sizes = { sm: 'w-4 h-4', md: 'w-6 h-6', lg: 'w-8 h-8' };
+  return (
+    <svg className={`animate-spin ${sizes[size]}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+  );
+}
+
 type Bar = { ts: string; o:number; h:number; l:number; c:number; v:number };
 
 type Analyze = {
@@ -33,6 +43,8 @@ export default function AnalystClient(){
   const [riskAmt, setRiskAmt] = useState<number>(1500);
   const [whatif, setWhatif] = useState<any>(null);
   const [loadingDay, setLoadingDay] = useState(false);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [loadingWhatif, setLoadingWhatif] = useState(false);
 
   const curBar = bars[ix];
 
@@ -54,22 +66,32 @@ export default function AnalystClient(){
 
   useEffect(()=>{ (async ()=>{
     if(mode!=='HIST' || bars.length===0) return;
-    const t = HHMM(bars[ix].ts);
-    const r = await fetch(`${API}/api/v2/hist/analyze?symbol=${encodeURIComponent(symbol)}&date=${date}&time=${t}`, { cache:'no-store' });
-    if(!r.ok){ setAz(null); return; }
-    const a = await r.json();
-    setAz(a);
+    try {
+      setLoadingAnalysis(true);
+      const t = HHMM(bars[ix].ts);
+      const r = await fetch(`${API}/api/v2/hist/analyze?symbol=${encodeURIComponent(symbol)}&date=${date}&time=${t}`, { cache:'no-store' });
+      if(!r.ok){ setAz(null); return; }
+      const a = await r.json();
+      setAz(a);
+    } finally {
+      setLoadingAnalysis(false);
+    }
   })(); }, [mode, symbol, date, ix, bars.length]);
 
   useEffect(()=>{ (async()=>{
     if(!az) { setWhatif(null); return; }
-    const entry = az.action.entry_range[1];
-    const stop  = az.action.stop;
-    const tp2   = az.action.tp2;
-    const url = `${API}/api/v2/hist/whatif?symbol=${encodeURIComponent(symbol)}&date=${date}&time=${HHMM(bars[ix].ts)}&entry=${entry}&stop=${stop}&tp2=${tp2}&risk_amt=${riskAmt}`;
-    const r = await fetch(url, { cache:'no-store' });
-    if(!r.ok){ setWhatif(null); return; }
-    setWhatif(await r.json());
+    try {
+      setLoadingWhatif(true);
+      const entry = az.action.entry_range[1];
+      const stop  = az.action.stop;
+      const tp2   = az.action.tp2;
+      const url = `${API}/api/v2/hist/whatif?symbol=${encodeURIComponent(symbol)}&date=${date}&time=${HHMM(bars[ix].ts)}&entry=${entry}&stop=${stop}&tp2=${tp2}&risk_amt=${riskAmt}`;
+      const r = await fetch(url, { cache:'no-store' });
+      if(!r.ok){ setWhatif(null); return; }
+      setWhatif(await r.json());
+    } finally {
+      setLoadingWhatif(false);
+    }
   })(); }, [az, riskAmt, ix, symbol, date, bars.length]);
 
   const svg = useMemo(()=>{
@@ -155,8 +177,12 @@ export default function AnalystClient(){
         {mode==='HIST' && (
           <>
             <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-            <button onClick={loadDay} disabled={!date||loadingDay} className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white">
-              {loadingDay?'Loading…':'Load Day'}
+            <button 
+              onClick={loadDay} 
+              disabled={!date||loadingDay} 
+              className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-2 transition-all hover:bg-zinc-800">
+              {loadingDay && <Spinner size="sm" />}
+              {loadingDay ? 'Loading...' : 'Load Day'}
             </button>
           </>
         )}
@@ -178,7 +204,12 @@ export default function AnalystClient(){
       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_360px]">
         <div>{svg}</div>
         <div className="space-y-3">
-          <div className="rounded-xl border border-zinc-200 p-3">
+          <div className="rounded-xl border border-zinc-200 p-3 relative">
+            {loadingAnalysis && (
+              <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl">
+                <Spinner size="md" />
+              </div>
+            )}
             <div className="text-[11px] text-zinc-500">Decision</div>
             <div className="mt-1 flex items-baseline gap-2">
               <div className={`text-xl font-bold ${az?.decision==='BUY'?'text-emerald-700': az?.decision==='SELL'?'text-rose-700':'text-zinc-800'}`}>{az?.decision || '—'}</div>
@@ -203,7 +234,12 @@ export default function AnalystClient(){
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-200 p-3">
+          <div className="rounded-xl border border-zinc-200 p-3 relative">
+            {loadingWhatif && (
+              <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-xl">
+                <Spinner size="md" />
+              </div>
+            )}
             <div className="text-[11px] text-zinc-500">Position Size</div>
             <div className="mt-2 flex items-center gap-2">
               <span className="text-xs">Risk ₹</span>

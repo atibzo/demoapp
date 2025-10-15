@@ -125,6 +125,16 @@ async function savePolicy(body: any): Promise<{ rev: number|null; body: any }> {
  * UI atoms
  * ------------------------------------------------------------------ */
 
+function Spinner({ size = 'sm' }: { size?: 'sm' | 'md' | 'lg' }) {
+  const sizes = { sm: 'w-4 h-4', md: 'w-6 h-6', lg: 'w-8 h-8' };
+  return (
+    <svg className={`animate-spin ${sizes[size]}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+  );
+}
+
 function Chip({ label, tone }:{label:string; tone:'ok'|'warn'|'error'|'neutral'}) {
   const t:any={
     ok:'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300',
@@ -305,13 +315,29 @@ function TopAlgos({session}:{session:Session|null}) {
       </div>
       <div className="flex items-center gap-3">
         <ToDControl value={tod} onChange={setTod} onSaveDefault={saveTodDefault} defaultLabel={defaultLabel} />
-        <button onClick={refresh} disabled={loading} className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white">{loading?'Refreshing…':'Run Scan'}</button>
+        <button 
+          onClick={refresh} 
+          disabled={loading} 
+          className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all hover:bg-zinc-800">
+          {loading && <Spinner size="sm" />}
+          {loading ? 'Scanning...' : 'Run Scan'}
+        </button>
       </div>
     </div>
 
-    {error && <div className="mb-2 rounded-xl bg-amber-100 text-amber-800 px-3 py-2 text-sm">{error}</div>}
+    {error && <div className="mb-2 rounded-xl bg-amber-100 text-amber-800 px-3 py-2 text-sm animate-pulse">{error}</div>}
 
-    <div className="overflow-hidden rounded-2xl border border-zinc-200">
+    {loading && rows.length === 0 && (
+      <div className="rounded-2xl border border-zinc-200 p-8 text-center">
+        <div className="flex flex-col items-center gap-3">
+          <Spinner size="lg" />
+          <div className="text-sm text-zinc-600">Scanning for opportunities...</div>
+        </div>
+      </div>
+    )}
+
+    {(!loading || rows.length > 0) && (
+    <div className="overflow-hidden rounded-2xl border border-zinc-200 transition-opacity duration-300">
       <table className="min-w-full text-sm">
         <thead className="bg-zinc-50 text-left text-xs text-zinc-600">
           <tr>
@@ -359,6 +385,7 @@ function TopAlgos({session}:{session:Session|null}) {
         </tbody>
       </table>
     </div>
+    )}
   </section>;
 }
 
@@ -436,10 +463,26 @@ function Analyst({session}:{session:Session|null}) {
 
 function Journal(){
   const [rows,setRows]=useState<any[]>([]);
-  async function refresh(){ try{ setRows(await j(await fetch(`${API}/api/journal`))); }catch{ setRows([]);} }
+  const [loading,setLoading]=useState(false);
+  async function refresh(){ 
+    try{ 
+      setLoading(true);
+      setRows(await j(await fetch(`${API}/api/journal`))); 
+    }catch{ 
+      setRows([]);
+    }finally{
+      setLoading(false);
+    }
+  }
   useEffect(()=>{ refresh(); },[]);
   return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
-    <button className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white" onClick={refresh}>Refresh</button>
+    <button 
+      className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-2 transition-all hover:bg-zinc-800" 
+      onClick={refresh}
+      disabled={loading}>
+      {loading && <Spinner size="sm" />}
+      {loading ? 'Refreshing...' : 'Refresh'}
+    </button>
     <div className="overflow-hidden rounded-xl border border-zinc-200 mt-3">
       <table className="min-w-full text-sm">
         <thead className="bg-zinc-50 text-left text-xs text-zinc-600">
@@ -460,10 +503,28 @@ function Journal(){
 function Config() {
   const [cfg,setCfg]=useState<{pinned:string[]; universe_limit:number}|null>(null);
   const [pinText,setPinText]=useState(''); const [limit,setLimit]=useState(300);
-  async function load(){ const c=await j(await fetch(`${API}/api/config`)); setCfg(c); setPinText((c.pinned||[]).join(',')); setLimit(c.universe_limit||300); }
+  const [loading,setLoading]=useState(false);
+  const [saving,setSaving]=useState(false);
+  async function load(){ 
+    try{
+      setLoading(true);
+      const c=await j(await fetch(`${API}/api/config`)); 
+      setCfg(c); 
+      setPinText((c.pinned||[]).join(',')); 
+      setLimit(c.universe_limit||300);
+    }finally{
+      setLoading(false);
+    }
+  }
   async function save(){
-    await fetch(`${API}/api/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ pinned: pinText.split(',').map(s=>s.trim()).filter(Boolean), universe_limit: limit })});
-    await load(); alert('Saved');
+    try{
+      setSaving(true);
+      await fetch(`${API}/api/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ pinned: pinText.split(',').map(s=>s.trim()).filter(Boolean), universe_limit: limit })});
+      await load(); 
+      alert('Saved');
+    }finally{
+      setSaving(false);
+    }
   }
   useEffect(()=>{ load(); },[]);
   return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
@@ -478,8 +539,20 @@ function Config() {
         <input type="number" value={limit} onChange={e=>setLimit(parseInt(e.target.value||'300'))} className="w-32 rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
       </div>
       <div className="flex gap-2">
-        <button onClick={save} className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white">Save</button>
-        <button onClick={load} className="rounded-xl bg-white px-3 py-2 text-xs font-semibold ring-1 ring-zinc-300">Reload</button>
+        <button 
+          onClick={save} 
+          disabled={saving}
+          className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-2 transition-all hover:bg-zinc-800">
+          {saving && <Spinner size="sm" />}
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button 
+          onClick={load} 
+          disabled={loading}
+          className="rounded-xl bg-white px-3 py-2 text-xs font-semibold ring-1 ring-zinc-300 disabled:opacity-50 flex items-center gap-2 transition-all hover:bg-zinc-50">
+          {loading && <Spinner size="sm" />}
+          {loading ? 'Loading...' : 'Reload'}
+        </button>
       </div>
     </div>
   </section>;
@@ -534,8 +607,12 @@ function PolicyForm() {
   return (
     <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6 space-y-6">
       <div className="flex items-center gap-3">
-        <button onClick={save} disabled={saving} className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white">
-          {saving? 'Saving…' : 'Save'}
+        <button 
+          onClick={save} 
+          disabled={saving} 
+          className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-2 transition-all hover:bg-zinc-800">
+          {saving && <Spinner size="sm" />}
+          {saving ? 'Saving...' : 'Save'}
         </button>
         {typeof rev === 'number' && <div className="text-xs text-zinc-500">rev {rev}</div>}
       </div>
