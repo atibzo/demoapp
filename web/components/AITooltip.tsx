@@ -30,18 +30,43 @@ export function AITooltip({ content, children }: AITooltipProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
+  // Validate content prop
+  if (!content || !content.title || !content.simpleExplanation) {
+    console.error('[AITooltip] Invalid content prop:', content);
+    return <>{children}</>;
+  }
+
   const impactColors = {
     low: 'text-green-700 bg-green-100',
     medium: 'text-amber-700 bg-amber-100',
     high: 'text-red-700 bg-red-100'
   };
 
+  // Safe value formatter
+  const formatValue = (value: any): string => {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    }
+    return String(value);
+  };
+
   return (
     <div className="relative inline-block">
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
         className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-bold transition-all-smooth hover:scale-110"
         title="Learn more"
+        aria-label={`Learn more about ${content.title}`}
       >
         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
@@ -52,7 +77,18 @@ export function AITooltip({ content, children }: AITooltipProps) {
         <>
           <div 
             className="fixed inset-0 z-40" 
-            onClick={() => setIsOpen(false)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setIsOpen(false);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Close tooltip"
           />
           <div className="absolute left-0 top-full mt-2 w-96 max-w-[calc(100vw-2rem)] z-50 animate-fadeIn">
             <div className="rounded-xl border-2 border-blue-200 bg-white shadow-elevated p-4">
@@ -86,26 +122,26 @@ export function AITooltip({ content, children }: AITooltipProps) {
               </div>
 
               {/* Examples */}
-              {Object.keys(content.examples).length > 0 && (
+              {content.examples && Object.keys(content.examples).length > 0 && (
                 <div className="mb-3">
                   <div className="text-xs font-semibold text-slate-600 mb-2">📊 Examples:</div>
                   <div className="space-y-1.5">
                     {content.examples.low && (
                       <div className="text-xs bg-green-50 border border-green-200 rounded-lg p-2">
-                        <span className="font-semibold text-green-900">Low ({JSON.stringify(content.examples.low.value)}):</span>
-                        <span className="text-green-800 ml-1">{content.examples.low.outcome}</span>
+                        <span className="font-semibold text-green-900">Low ({formatValue(content.examples.low.value)}):</span>
+                        <span className="text-green-800 ml-1">{content.examples.low.outcome || 'N/A'}</span>
                       </div>
                     )}
                     {content.examples.medium && (
                       <div className="text-xs bg-blue-50 border border-blue-200 rounded-lg p-2">
-                        <span className="font-semibold text-blue-900">Medium ({JSON.stringify(content.examples.medium.value)}):</span>
-                        <span className="text-blue-800 ml-1">{content.examples.medium.outcome}</span>
+                        <span className="font-semibold text-blue-900">Medium ({formatValue(content.examples.medium.value)}):</span>
+                        <span className="text-blue-800 ml-1">{content.examples.medium.outcome || 'N/A'}</span>
                       </div>
                     )}
                     {content.examples.high && (
                       <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg p-2">
-                        <span className="font-semibold text-amber-900">High ({JSON.stringify(content.examples.high.value)}):</span>
-                        <span className="text-amber-800 ml-1">{content.examples.high.outcome}</span>
+                        <span className="font-semibold text-amber-900">High ({formatValue(content.examples.high.value)}):</span>
+                        <span className="text-amber-800 ml-1">{content.examples.high.outcome || 'N/A'}</span>
                       </div>
                     )}
                   </div>
@@ -113,26 +149,26 @@ export function AITooltip({ content, children }: AITooltipProps) {
               )}
 
               {/* Recommendations */}
-              {Object.keys(content.recommendations).length > 0 && (
+              {content.recommendations && Object.keys(content.recommendations).length > 0 && (
                 <div className="mb-3">
                   <div className="text-xs font-semibold text-slate-600 mb-2">💡 Recommendations:</div>
                   <div className="grid grid-cols-3 gap-2">
                     {content.recommendations.conservative !== undefined && (
                       <div className="text-center p-2 rounded-lg bg-green-50 border border-green-200">
                         <div className="text-xs font-semibold text-green-900">Conservative</div>
-                        <div className="text-sm font-mono font-bold text-green-700">{JSON.stringify(content.recommendations.conservative)}</div>
+                        <div className="text-sm font-mono font-bold text-green-700 break-words">{formatValue(content.recommendations.conservative)}</div>
                       </div>
                     )}
                     {content.recommendations.balanced !== undefined && (
                       <div className="text-center p-2 rounded-lg bg-blue-50 border border-blue-200">
                         <div className="text-xs font-semibold text-blue-900">Balanced ⭐</div>
-                        <div className="text-sm font-mono font-bold text-blue-700">{JSON.stringify(content.recommendations.balanced)}</div>
+                        <div className="text-sm font-mono font-bold text-blue-700 break-words">{formatValue(content.recommendations.balanced)}</div>
                       </div>
                     )}
                     {content.recommendations.aggressive !== undefined && (
                       <div className="text-center p-2 rounded-lg bg-amber-50 border border-amber-200">
                         <div className="text-xs font-semibold text-amber-900">Aggressive</div>
-                        <div className="text-sm font-mono font-bold text-amber-700">{JSON.stringify(content.recommendations.aggressive)}</div>
+                        <div className="text-sm font-mono font-bold text-amber-700 break-words">{formatValue(content.recommendations.aggressive)}</div>
                       </div>
                     )}
                   </div>
@@ -157,8 +193,15 @@ export function AITooltip({ content, children }: AITooltipProps) {
               {content.technicalDetails && (
                 <div>
                   <button
-                    onClick={() => setShowDetails(!showDetails)}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowDetails(!showDetails);
+                    }}
                     className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
+                    aria-expanded={showDetails}
+                    aria-label={showDetails ? 'Hide technical details' : 'Show technical details'}
                   >
                     <svg className={`w-3 h-3 transition-transform ${showDetails ? 'rotate-90' : ''}`} fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -167,7 +210,7 @@ export function AITooltip({ content, children }: AITooltipProps) {
                   </button>
                   {showDetails && (
                     <div className="mt-2 p-3 rounded-lg bg-slate-50 border border-slate-200">
-                      <p className="text-xs text-slate-700 leading-relaxed font-mono">{content.technicalDetails}</p>
+                      <p className="text-xs text-slate-700 leading-relaxed font-mono whitespace-pre-wrap break-words">{content.technicalDetails}</p>
                     </div>
                   )}
                 </div>

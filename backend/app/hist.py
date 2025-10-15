@@ -384,14 +384,36 @@ def _find_instrument_token_robust(ks, symbol: str) -> tuple[int | None, str | No
     import logging
     log = logging.getLogger(__name__)
     
-    # Parse symbol
-    if ":" in symbol:
-        preferred_exchange, tradingsymbol = symbol.split(":", 1)
-    else:
-        preferred_exchange, tradingsymbol = "NSE", symbol
+    # Validate inputs
+    if not ks:
+        log.error("[ROBUST_LOOKUP] Invalid kite session (ks is None)")
+        return None, None
     
-    tradingsymbol = tradingsymbol.upper().strip()
-    preferred_exchange = preferred_exchange.upper().strip()
+    if not symbol or not isinstance(symbol, str):
+        log.error(f"[ROBUST_LOOKUP] Invalid symbol: {symbol}")
+        return None, None
+    
+    # Parse symbol safely
+    try:
+        if ":" in symbol:
+            parts = symbol.split(":", 1)
+            if len(parts) != 2:
+                log.error(f"[ROBUST_LOOKUP] Invalid symbol format: {symbol}")
+                return None, None
+            preferred_exchange, tradingsymbol = parts
+        else:
+            preferred_exchange, tradingsymbol = "NSE", symbol
+        
+        tradingsymbol = tradingsymbol.upper().strip()
+        preferred_exchange = preferred_exchange.upper().strip()
+        
+        if not tradingsymbol or not preferred_exchange:
+            log.error(f"[ROBUST_LOOKUP] Empty symbol or exchange after parsing: {symbol}")
+            return None, None
+            
+    except Exception as e:
+        log.error(f"[ROBUST_LOOKUP] Error parsing symbol {symbol}: {e}")
+        return None, None
     
     log.info(f"[ROBUST_LOOKUP] Starting search for {symbol} (exchange: {preferred_exchange}, symbol: {tradingsymbol})")
     
@@ -410,10 +432,16 @@ def _find_instrument_token_robust(ks, symbol: str) -> tuple[int | None, str | No
         try:
             log.info(f"[ROBUST_LOOKUP] Trying exchange: {exchange}")
             instruments = ks.instruments(exchange)
+            
+            # Validate instruments response
+            if not instruments or not isinstance(instruments, list):
+                log.warning(f"[ROBUST_LOOKUP] Invalid instruments response for {exchange}")
+                continue
+                
             log.info(f"[ROBUST_LOOKUP] Loaded {len(instruments)} instruments from {exchange}")
             
-            # Create variations to try
-            variations = [
+            # Create variations to try (deduplicate)
+            variations = list(dict.fromkeys([
                 tradingsymbol,                           # Exact as provided
                 f"{tradingsymbol}-EQ",                   # With -EQ suffix (equity)
                 f"{tradingsymbol}-BE",                   # With -BE suffix (trade-to-trade)
@@ -421,48 +449,103 @@ def _find_instrument_token_robust(ks, symbol: str) -> tuple[int | None, str | No
                 tradingsymbol.replace("-BE", ""),        # Without -BE if provided
                 tradingsymbol.replace("&", "%26"),       # URL encoded ampersand
                 tradingsymbol.replace("%26", "&"),       # Decoded ampersand
-            ]
+            ]))
             
             # Try each variation
             for variant in variations:
+                if not variant:  # Skip empty strings
+                    continue
+                    
                 for inst in instruments:
-                    inst_symbol = inst.get("tradingsymbol", "").upper()
+                    if not inst or not isinstance(inst, dict):
+                        continue
+                    
+                    inst_symbol = str(inst.get("tradingsymbol", "")).upper()
+                    if not inst_symbol:
+                        continue
                     
                     # Exact match
                     if inst_symbol == variant.upper():
                         token = inst.get("instrument_token")
-                        log.info(f"[ROBUST_LOOKUP] ✅ FOUND on {exchange}: {variant} -> token {token}")
-                        return token, exchange
+                        if token and isinstance(token, (int, str)):
+                            try:
+                                token = int(token)
+                                log.info(f"[ROBUST_LOOKUP] ✅ FOUND on {exchange}: {variant} -> token {token}")
+                                return token, exchange
+                            except (ValueError, TypeError):
+                                log.warning(f"[ROBUST_LOOKUP] Invalid token format: {token}")
+                                continue
                     
-                    # Fuzzy match (contains)
-                    if tradingsymbol in inst_symbol and abs(len(inst_symbol) - len(tradingsymbol)) <= 3:
+                    # Fuzzy match (contains) - but be strict about length
+                    if (len(tradingsymbol) >= 3 and 
+                        tradingsymbol in inst_symbol and 
+                        abs(len(inst_symbol) - len(tradingsymbol)) <= 3 and
+                        inst_symbol.startswith(tradingsymbol[:2])):  # First 2 chars must match
                         token = inst.get("instrument_token")
-                        log.info(f"[ROBUST_LOOKUP] ✅ FUZZY MATCH on {exchange}: {inst_symbol} -> token {token}")
-                        return token, exchange
+                        if token and isinstance(token, (int, str)):
+                            try:
+                                token = int(token)
+                                log.info(f"[ROBUST_LOOKUP] ✅ FUZZY MATCH on {exchange}: {inst_symbol} -> token {token}")
+                                return token, exchange
+                            except (ValueError, TypeError):
+                                continue
             
             log.info(f"[ROBUST_LOOKUP] Not found on {exchange}, trying next...")
         except Exception as e:
-            log.error(f"[ROBUST_LOOKUP] Error searching {exchange}: {e}")
+            log.error(f"[ROBUST_LOOKUP] Error searching {exchange}: {e}", exc_info=True)
             continue
     
     # Strategy 3: Last resort - search ALL exchanges
     log.warning(f"[ROBUST_LOOKUP] Not found on primary exchanges, searching ALL exchanges...")
     try:
         all_instruments = ks.instruments()
+        
+        # Validate response
+        if not all_instruments or not isinstance(all_instruments, list):
+            log.error(f"[ROBUST_LOOKUP] Invalid instruments response from global search")
+            return None, None
+            
         log.info(f"[ROBUST_LOOKUP] Loaded {len(all_instruments)} instruments from ALL exchanges")
         
         for inst in all_instruments:
-            inst_symbol = inst.get("tradingsymbol", "").upper()
-            # Try exact and fuzzy match
-            if inst_symbol == tradingsymbol.upper() or (tradingsymbol in inst_symbol and len(inst_symbol) <= len(tradingsymbol) + 3):
+            if not inst or not isinstance(inst, dict):
+                continue
+                
+            inst_symbol = str(inst.get("tradingsymbol", "")).upper()
+            if not inst_symbol:
+                continue
+            
+            # Try exact match first
+            if inst_symbol == tradingsymbol.upper():
                 token = inst.get("instrument_token")
                 exch = inst.get("exchange", "UNKNOWN")
-                log.info(f"[ROBUST_LOOKUP] ✅ FOUND on {exch} (global search): {inst_symbol} -> token {token}")
-                return token, exch
+                if token and isinstance(token, (int, str)):
+                    try:
+                        token = int(token)
+                        log.info(f"[ROBUST_LOOKUP] ✅ FOUND on {exch} (global search): {inst_symbol} -> token {token}")
+                        return token, exch
+                    except (ValueError, TypeError):
+                        continue
+            
+            # Fuzzy match (more strict for global search)
+            if (len(tradingsymbol) >= 4 and 
+                tradingsymbol in inst_symbol and 
+                abs(len(inst_symbol) - len(tradingsymbol)) <= 3 and
+                inst_symbol.startswith(tradingsymbol[:3])):  # First 3 chars must match
+                token = inst.get("instrument_token")
+                exch = inst.get("exchange", "UNKNOWN")
+                if token and isinstance(token, (int, str)):
+                    try:
+                        token = int(token)
+                        log.info(f"[ROBUST_LOOKUP] ✅ FUZZY MATCH on {exch} (global search): {inst_symbol} -> token {token}")
+                        return token, exch
+                    except (ValueError, TypeError):
+                        continue
     except Exception as e:
-        log.error(f"[ROBUST_LOOKUP] Error in global search: {e}")
+        log.error(f"[ROBUST_LOOKUP] Error in global search: {e}", exc_info=True)
     
-    log.error(f"[ROBUST_LOOKUP] ❌ FAILED: Could not find instrument token for {symbol} on any exchange")
+    log.error(f"[ROBUST_LOOKUP] ❌ FAILED: Could not find instrument token for {symbol} on any exchange. "
+             f"Tried {len(exchanges_to_try)} exchanges with multiple variations.")
     return None, None
 
 
@@ -500,12 +583,20 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
             return []
         
         # Use ULTRA-ROBUST instrument lookup
-        token, found_exchange = _find_instrument_token_robust(ks, symbol)
+        try:
+            token, found_exchange = _find_instrument_token_robust(ks, symbol)
+        except Exception as e:
+            log.error(f"[FETCH] Error in instrument lookup for {symbol}: {e}", exc_info=True)
+            return []
         
-        if not token:
+        if not token or not isinstance(token, int):
             log.error(f"[FETCH] ❌ Could not find instrument token for {symbol} on any exchange. "
                      f"Please verify the symbol is correct. Examples: NSE:INFY, BSE:RELIANCE, NSE:BHEL")
             return []
+        
+        if not found_exchange:
+            log.warning(f"[FETCH] Token found but exchange is None, using token anyway: {token}")
+            found_exchange = "UNKNOWN"
         
         log.info(f"[FETCH] Using token {token} from exchange {found_exchange}")
         

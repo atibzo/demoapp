@@ -664,16 +664,28 @@ function Config() {
       setError(null);
       
       // Validate limit
-      const numLimit = parseInt(limit.toString());
+      const numLimit = parseInt(String(limit));
       if (isNaN(numLimit) || numLimit < 1 || numLimit > 600) {
         setError('Universe limit must be between 1 and 600');
+        setSaving(false);
         return;
       }
       
-      // Parse pinned symbols
-      const pinnedArray = pinText.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+      // Parse and validate pinned symbols
+      const pinnedArray = String(pinText || '')
+        .split(',')
+        .map(s => s.trim().toUpperCase())
+        .filter(s => s.length > 0 && s.match(/^[A-Z0-9:&-]+$/));  // Basic validation
       
-      await fetch(`${API}/api/config`, { 
+      // Validate pinned symbols format
+      const invalidSymbols = pinnedArray.filter(s => !s.includes(':') && s.length < 2);
+      if (invalidSymbols.length > 0) {
+        setError(`Invalid symbols: ${invalidSymbols.join(', ')}. Use format NSE:SYMBOL or BSE:SYMBOL`);
+        setSaving(false);
+        return;
+      }
+      
+      const response = await fetch(`${API}/api/config`, { 
         method:'POST', 
         headers:{'Content-Type':'application/json'}, 
         body: JSON.stringify({ 
@@ -682,9 +694,15 @@ function Config() {
         })
       });
       
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Failed to save: ${errorText}`);
+      }
+      
       await load(); 
       alert('✅ Configuration saved successfully! Settings will take effect on next ticker refresh.');
     }catch(e:any){
+      console.error('[Config] Save error:', e);
       setError(e?.message || 'Failed to save config');
     }finally{
       setSaving(false);
@@ -751,8 +769,19 @@ function Config() {
             type="number" 
             value={limit} 
             onChange={e=>{
-              const val = parseInt(e.target.value||'300');
-              setLimit(Math.min(600, Math.max(1, val)));
+              const val = parseInt(e.target.value || '300', 10);
+              if (!isNaN(val)) {
+                setLimit(Math.min(600, Math.max(1, val)));
+              }
+            }}
+            onBlur={e=>{
+              // Ensure valid value on blur
+              const val = parseInt(e.target.value || '300', 10);
+              if (isNaN(val) || val < 1) {
+                setLimit(300);
+              } else if (val > 600) {
+                setLimit(600);
+              }
             }}
             min="1"
             max="600"
