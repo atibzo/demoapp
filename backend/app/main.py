@@ -487,50 +487,6 @@ def api_policy_post(obj: Policy):
     p.write_text(json.dumps(obj.model_dump(), indent=2))
     return {"ok": True}
 
-
-# ---------- Historical (day + minute) ----------
-@app.get("/api/v2/hist/bars")
-def hist_bars(symbol: str = Query(...), date: str = Query(..., description="YYYY-MM-DD")):
-    symbol = _clean_symbol(symbol)
-    bars = get_bars_for_date(symbol, date)
-    if not bars:
-        raise HTTPException(status_code=404, detail="No bars recorded for this date.")
-    return {"ok": True, "request_id": rid(), "data": {"bars": bars}}
-
-
-@app.get("/api/v2/hist/analyze")
-def hist_analyze(
-    symbol: str = Query(...),
-    date: str = Query(..., description="YYYY-MM-DD"),
-    time_: str = Query(..., alias="time", pattern=r"^\d{2}:\d{2}$"),
-):
-    symbol = _clean_symbol(symbol)
-    bars = get_bars_for_date(symbol, date)
-    if not bars:
-        raise HTTPException(status_code=404, detail="No bars recorded for this date.")
-    upto = _slice_upto_hhmm(bars, time_)
-    if not upto:
-        raise HTTPException(status_code=400, detail="No bars up to given time.")
-    snap = build_snapshot_at(symbol, upto)
-    pol = load_policy_v2()
-    out = analyze_snapshot(snap, pol)
-    return {"ok": True, "request_id": rid(), "data": out}
-
-
-@app.get("/api/v2/hist/whatif")
-def hist_whatif(
-    symbol: str = Query(...),
-    date: str = Query(...),
-    time_: str = Query(..., alias="time"),
-    entry: float = Query(...),
-    stop: float = Query(...),
-    tp2: float = Query(...),
-    risk_amt: float = Query(...),
-    lot: int = Query(1, ge=1),
-):
-    res = whatif(entry, stop, tp2, risk_amt, lot)
-    return {"ok": True, "request_id": rid(), "data": res}
-
 # ---------- Historical backfill (one day, 1-min) ----------
 from datetime import datetime as _dt
 from zoneinfo import ZoneInfo as _Z
