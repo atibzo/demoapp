@@ -415,17 +415,32 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
         # Find instrument token
         token = None
         try:
+            log.info(f"Fetching instruments list for exchange: {exchange}")
             instruments = ks.instruments(exchange)
+            log.info(f"Found {len(instruments) if instruments else 0} instruments on {exchange}")
+            
+            # Try exact match first
             for inst in instruments:
                 if inst.get("tradingsymbol", "").upper() == tradingsymbol.upper():
                     token = inst.get("instrument_token")
+                    log.info(f"Found exact match: {tradingsymbol} -> token {token}")
                     break
+            
+            # If no exact match, try with EQ suffix (common for NSE equity)
+            if not token and not tradingsymbol.endswith("-EQ"):
+                tradingsymbol_eq = f"{tradingsymbol}-EQ"
+                for inst in instruments:
+                    if inst.get("tradingsymbol", "").upper() == tradingsymbol_eq.upper():
+                        token = inst.get("instrument_token")
+                        log.info(f"Found match with -EQ suffix: {tradingsymbol_eq} -> token {token}")
+                        break
         except Exception as e:
-            log.error(f"Failed to get instruments list for {exchange}: {e}")
+            log.error(f"Failed to get instruments list for {exchange}: {e}", exc_info=True)
             return []
         
         if not token:
-            log.error(f"Instrument token not found for {symbol} (exchange: {exchange}, tradingsymbol: {tradingsymbol})")
+            log.error(f"Instrument token not found for {symbol} (exchange: {exchange}, tradingsymbol: {tradingsymbol}). "
+                     f"Tried: {tradingsymbol}, {tradingsymbol}-EQ. Please verify the symbol is valid and traded on {exchange}.")
             return []
         
         # Fetch historical data from Kite
@@ -433,18 +448,29 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
         start_ist = _dt.fromisoformat(f"{date_yyyy_mm_dd}T09:15:00").replace(tzinfo=ist)
         end_ist = _dt.fromisoformat(f"{date_yyyy_mm_dd}T15:30:00").replace(tzinfo=ist)
         
-        data = ks.historical_data(
-            instrument_token=token,
-            from_date=start_ist,
-            to_date=end_ist,
-            interval="minute",
-            continuous=False,
-            oi=False,
-        )
+        log.info(f"Fetching historical data for token {token} from {start_ist} to {end_ist}")
+        
+        try:
+            data = ks.historical_data(
+                instrument_token=token,
+                from_date=start_ist,
+                to_date=end_ist,
+                interval="minute",
+                continuous=False,
+                oi=False,
+            )
+        except Exception as e:
+            log.error(f"Failed to fetch historical data for {symbol} (token: {token}): {e}", exc_info=True)
+            return []
         
         if not data:
-            log.warning(f"No data returned from Kite API for {symbol} on {date_yyyy_mm_dd}. This could mean: (1) Market was closed, (2) No trading activity, or (3) Invalid date.")
+            log.warning(f"No data returned from Kite API for {symbol} on {date_yyyy_mm_dd}. "
+                       f"Possible reasons: (1) Market was closed on this date, (2) No trading activity, "
+                       f"(3) Date is in the future, or (4) Symbol was not traded on this date. "
+                       f"Please verify the date and try a recent trading day.")
             return []
+        
+        log.info(f"Successfully fetched {len(data)} candles for {symbol} on {date_yyyy_mm_dd}")
         
         # Convert Kite format to our format
         bars = []

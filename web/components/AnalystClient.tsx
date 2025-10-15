@@ -57,27 +57,60 @@ export default function AnalystClient(){
     try{
       setLoadingDay(true);
       setError(null);
+      console.log(`[Analyst] Loading data for ${symbol} on ${date}`);
+      
       // Auto-fetch is now enabled by default - will fetch from Kite if not cached
       const r = await fetch(`${API}/api/v2/hist/bars?symbol=${encodeURIComponent(symbol)}&date=${date}&auto_fetch=true`, { cache: 'no-store' });
+      
+      console.log(`[Analyst] Fetch response status: ${r.status}`);
+      
       if(!r.ok){ 
         const errData = await r.json().catch(() => ({}));
-        setError(errData.detail || 'Failed to load historical data. Make sure you are logged in to Zerodha.'); 
+        console.error(`[Analyst] Fetch failed:`, errData);
+        
+        let errorMsg = errData.detail || 'Failed to load historical data.';
+        
+        // Add helpful context based on status code
+        if (r.status === 401) {
+          errorMsg = '🔒 Not logged in to Zerodha. Please login first to fetch historical data.';
+        } else if (r.status === 404) {
+          errorMsg = `📊 No data available for ${symbol} on ${date}. Possible reasons:\n` +
+                     `• Market was closed on this date (check if it was a trading day)\n` +
+                     `• Symbol might not be valid or not traded on this date\n` +
+                     `• Date might be in the future\n` +
+                     `Tip: Try a recent trading day (e.g., yesterday or last week)`;
+        } else if (r.status === 500) {
+          errorMsg = `⚠️ Server error while fetching data for ${symbol}. This might be due to:\n` +
+                     `• Invalid symbol format (use NSE:SYMBOL format)\n` +
+                     `• Zerodha API issues\n` +
+                     `• Network connectivity problems\n` +
+                     `Check browser console and backend logs for details.`;
+        }
+        
+        setError(errorMsg); 
         setBars([]); 
         return; 
       }
+      
       const x = await r.json();
       const b:Bar[] = (x.bars||[]).map((z:any)=>({ ts:z.ts, o:+z.o, h:+z.h, l:+z.l, c:+z.c, v:+z.v }));
+      
+      console.log(`[Analyst] Received ${b.length} bars`);
+      
       if (b.length === 0) {
-        setError('No bars found for this symbol and date.');
+        setError(`No bars found for ${symbol} on ${date}. The data might not be available for this date.`);
         setBars([]);
         return;
       }
+      
       setBars(b);
       const mid = Math.min(Math.floor(b.length*0.5), Math.max(0,b.length-1));
       setIx(mid);
       setError(null);
+      console.log(`[Analyst] Successfully loaded ${b.length} bars for ${symbol}`);
     } catch(e: any) {
-      setError(e?.message || 'Failed to load historical data. Make sure you are logged in to Zerodha.');
+      console.error('[Analyst] Error loading data:', e);
+      setError(`Network error: ${e?.message || 'Failed to load historical data'}. Make sure the backend is running and you are logged in to Zerodha.`);
       setBars([]);
     } finally {
       setLoadingDay(false);
@@ -234,7 +267,7 @@ export default function AnalystClient(){
             placeholder="Enter ANY symbol (e.g., NSE:INFY, NSE:TCS, NSE:RELIANCE)"
             className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm" />
           <div className="text-xs text-slate-500 mt-1">
-            ✨ Works independently - analyze any of the top 300 intraday stocks!
+            ✨ <strong>Works independently!</strong> No need to load in "Top Algos" first. Supports <strong>ANY NSE/BSE symbol</strong> - data is auto-fetched from Zerodha.
           </div>
         </div>
         <div className="flex items-center gap-2 text-sm">
@@ -276,11 +309,11 @@ export default function AnalystClient(){
 
       {error && (
         <div className="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <div className="flex items-start gap-2">
+            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
             </svg>
-            <span>{error}</span>
+            <div className="whitespace-pre-line">{error}</div>
           </div>
         </div>
       )}
@@ -292,15 +325,24 @@ export default function AnalystClient(){
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
             </svg>
             <div>
-              <div className="font-semibold mb-1">How to use Analyst:</div>
+              <div className="font-semibold mb-1">📊 How to use the Analyst (100% Independent):</div>
               <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li>Enter any symbol from top 300 intraday stocks (e.g., NSE:INFY, NSE:RELIANCE)</li>
-                <li>Select a historical date</li>
-                <li>Click "Load Day" - data will be auto-fetched from Kite if needed</li>
-                <li>Analyze the stock at any time during the trading day</li>
+                <li><strong>Enter ANY NSE/BSE symbol</strong> (e.g., NSE:INFY, NSE:RELIANCE, NSE:BHEL, NSE:TCS)</li>
+                <li><strong>Select a historical date</strong> (must be a past trading day)</li>
+                <li><strong>Click "Load Day"</strong> - data is automatically fetched from Zerodha if you're logged in</li>
+                <li><strong>Analyze the stock</strong> at any time during the trading day using the slider</li>
               </ol>
-              <div className="mt-2 text-xs text-blue-600">
-                💡 <strong>New:</strong> No need to have the stock in "Top Algos" - works independently!
+              <div className="mt-3 p-2 rounded bg-blue-100 text-xs">
+                <div className="font-semibold mb-1">✨ <strong>Key Features:</strong></div>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                  <li><strong>100% Independent:</strong> No need to load symbols in "Top Algos" first!</li>
+                  <li><strong>Works with ANY symbol:</strong> Not limited to the top 300 list</li>
+                  <li><strong>Auto-fetch:</strong> Automatically fetches historical data from Zerodha</li>
+                  <li><strong>Cached:</strong> Once fetched, data is cached for faster access</li>
+                </ul>
+              </div>
+              <div className="mt-2 text-xs text-blue-700">
+                ⚠️ <strong>Important:</strong> Make sure you're logged in to Zerodha before trying to load data. Select a valid past trading day (not weekends/holidays/future dates).
               </div>
             </div>
           </div>
