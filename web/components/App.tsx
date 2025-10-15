@@ -203,7 +203,7 @@ function Header({ session, onLogin }:{session:Session|null; onLogin:()=>void}) {
 }
 
 function Tabs({tab,setTab}:{tab:string; setTab:(t:string)=>void}) {
-  const items=['Top Algos','Watch','Analyst','Journal','Policy','Config'];
+  const items=['Top Algos','Watch','Journal','Policy','Config'];
   return <nav className="border-b border-zinc-200 bg-white">
     <div className="mx-auto max-w-[1200px] px-3 md:px-6">
       <div className="flex flex-wrap gap-2 py-2">
@@ -422,49 +422,8 @@ function Watch({session}:{session:Session|null}) {
 }
 
 /* ------------------------------------------------------------------ *
- * Analyst
+ * Analyst - removed, use /analyst page instead
  * ------------------------------------------------------------------ */
-
-function Analyst({session}:{session:Session|null}) {
-  const [sym,setSym]=useState('NSE:INFY');
-  const [verdict,setVerdict]=useState<any>(null);
-  const [bars,setBars]=useState<any[]>([]);
-  const [inds,setInds]=useState<any>({});
-
-  async function go(){
-    const clean = sym.replace(/\s+/g, '').toUpperCase();
-    const r  = await j(await fetch(`${API}/api/analyze?symbol=${encodeURIComponent(clean)}`));
-    setVerdict(r.data);
-    const br = await j(await fetch(`${API}/api/bars?symbol=${encodeURIComponent(clean)}&limit=120`));
-    setBars(br.data?.bars||[]);
-    setInds(br.data?.indicators||{});
-  }
-
-  return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
-    <div className="flex gap-2 items-center">
-      <input value={sym} onChange={e=>setSym(e.target.value)} className="w-56 rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
-      <button onClick={go} className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white">Analyze</button>
-    </div>
-    {bars.length>0 && <div className="mt-3 text-[11px] text-zinc-600">Loaded {bars.length} recent minute bars for {sym}. (Use these for charts.)</div>}
-    {verdict && <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
-      <div className="rounded-xl border border-zinc-200 p-3">
-        <div className="text-[11px] text-zinc-500">Decision ✦</div>
-        <div className="mt-1 text-xl font-bold">{String(verdict.decision||'').toUpperCase()}</div>
-        <div className="text-zinc-400"><Hint metric="decision" context={{symbol:sym, ...verdict, mode:session?.mode}}/></div>
-      </div>
-      <div className="rounded-xl border border-zinc-200 p-3">
-        <div className="text-[11px] text-zinc-500">Bands ✦</div>
-        <div className="mt-1 font-mono text-lg">{Array.isArray(verdict.bands)? verdict.bands.join(' / ') : '—'}</div>
-        <div className="text-zinc-400"><Hint metric="bands" context={{symbol:sym, ...verdict}}/></div>
-      </div>
-      <div className="rounded-xl border border-zinc-200 p-3">
-        <div className="text-[11px] text-zinc-500">Confidence ✦</div>
-        <div className="mt-1 font-mono text-lg">{verdict.confidence}</div>
-        <div className="text-zinc-400"><Hint metric="confidence" context={{symbol:sym, ...verdict}}/></div>
-      </div>
-    </div>}
-  </section>;
-}
 
 /* ------------------------------------------------------------------ *
  * Journal + Config
@@ -693,7 +652,6 @@ export default function App() {
       <ErrorBoundary>
         {tab === 'Top Algos' && <TopAlgos session={session} />}
         {tab === 'Watch' && <Watch session={session} />}
-        {tab === 'Analyst' && <Analyst session={session} />}
         {tab === 'Journal' && <Journal />}
         {tab === 'Policy' && <PolicyForm />}
         {tab === 'Config' && <Config />}
