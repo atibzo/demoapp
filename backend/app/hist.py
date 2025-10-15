@@ -379,6 +379,9 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
     Fetch historical bars from Kite API and cache in Redis.
     Returns the bars or [] if fetch fails.
     """
+    import logging
+    log = logging.getLogger(__name__)
+    
     try:
         from .kite import get_kite
         from datetime import datetime as _dt
@@ -387,7 +390,10 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
         # Check if we already have the data cached
         cached = get_bars_for_date(symbol, date_yyyy_mm_dd)
         if cached:
+            log.info(f"Cache hit for {symbol} on {date_yyyy_mm_dd}")
             return cached
+        
+        log.info(f"Fetching historical data for {symbol} on {date_yyyy_mm_dd} from Kite API")
         
         # Extract exchange and tradingsymbol
         if ":" in symbol:
@@ -395,9 +401,15 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
         else:
             exchange, tradingsymbol = "NSE", symbol
         
-        # Get instrument token
-        ks = get_kite().kite
+        # Get Kite session and check authentication
+        kite_session = get_kite()
+        if not kite_session.access_token:
+            log.error(f"Not logged in to Zerodha. Please login to fetch historical data.")
+            return []
+        
+        ks = kite_session.kite
         if not ks:
+            log.error(f"Kite session not initialized.")
             return []
         
         # Find instrument token
@@ -409,10 +421,11 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
                     token = inst.get("instrument_token")
                     break
         except Exception as e:
-            print(f"Failed to get instrument token for {symbol}: {e}")
+            log.error(f"Failed to get instruments list for {exchange}: {e}")
             return []
         
         if not token:
+            log.error(f"Instrument token not found for {symbol} (exchange: {exchange}, tradingsymbol: {tradingsymbol})")
             return []
         
         # Fetch historical data from Kite
@@ -430,6 +443,7 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
         )
         
         if not data:
+            log.warning(f"No data returned from Kite API for {symbol} on {date_yyyy_mm_dd}. This could mean: (1) Market was closed, (2) No trading activity, or (3) Invalid date.")
             return []
         
         # Convert Kite format to our format
@@ -448,10 +462,11 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
         # Cache the bars in Redis
         if bars:
             write_bars_for_date(symbol, date_yyyy_mm_dd, bars)
+            log.info(f"Successfully fetched and cached {len(bars)} bars for {symbol} on {date_yyyy_mm_dd}")
         
         return bars
     except Exception as e:
-        print(f"Failed to fetch historical bars for {symbol} on {date_yyyy_mm_dd}: {e}")
+        log.exception(f"Failed to fetch historical bars for {symbol} on {date_yyyy_mm_dd}: {e}")
         return []
 
 

@@ -19,6 +19,11 @@ def hist_bars(symbol: str, date: str, auto_fetch: bool = Query(default=True)):
         List of 1-minute bars for the trading day
     """
     from .hist import _fetch_and_cache_historical_bars
+    from .kite import get_kite
+    import logging
+    
+    log = logging.getLogger(__name__)
+    log.info(f"hist_bars called: symbol={symbol}, date={date}, auto_fetch={auto_fetch}")
     
     # Clean symbol
     symbol = symbol.replace(" ", "").upper()
@@ -28,13 +33,21 @@ def hist_bars(symbol: str, date: str, auto_fetch: bool = Query(default=True)):
     
     # If no cached bars and auto_fetch is enabled, try to fetch from Kite API
     if not bars and auto_fetch:
+        # Check authentication first
+        kite_session = get_kite()
+        if not kite_session.access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Not logged in to Zerodha. Please login to fetch historical data."
+            )
+        
         bars = _fetch_and_cache_historical_bars(symbol, date)
     
     if not bars:
         raise HTTPException(
             status_code=404,
             detail=f"No bars recorded for {symbol} on {date}. "
-                   "Try logging in to Zerodha to fetch historical data."
+                   "Check backend logs for details. Possible causes: (1) Not logged in, (2) Market was closed, (3) Invalid symbol."
         )
     
     return {"bars": bars}
@@ -49,6 +62,11 @@ def hist_analyze(symbol: str, date: str, time: str = Query(..., regex=r"^\d{2}:\
     not just stocks that are in the "top algos" universe.
     """
     from .hist import _fetch_and_cache_historical_bars
+    from .kite import get_kite
+    import logging
+    
+    log = logging.getLogger(__name__)
+    log.info(f"hist_analyze called: symbol={symbol}, date={date}, time={time}")
     
     # Clean symbol
     symbol = symbol.replace(" ", "").upper()
@@ -58,13 +76,21 @@ def hist_analyze(symbol: str, date: str, time: str = Query(..., regex=r"^\d{2}:\
     
     # If no cached bars, try to fetch from Kite API
     if not bars:
+        # Check authentication first
+        kite_session = get_kite()
+        if not kite_session.access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Not logged in to Zerodha. Please login to fetch historical data."
+            )
+        
         bars = _fetch_and_cache_historical_bars(symbol, date)
         
     if not bars:
         raise HTTPException(
             status_code=404, 
             detail=f"No historical data available for {symbol} on {date}. "
-                   "Make sure you're logged in to Zerodha and the symbol exists."
+                   "Check backend logs for details."
         )
     
     upto = _slice_upto_hhmm(bars, time)
