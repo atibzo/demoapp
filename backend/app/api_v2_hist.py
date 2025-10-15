@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
-from typing import Any, Dict
-from .hist import get_bars_for_date, _slice_upto_hhmm, build_snapshot_at, analyze_snapshot, load_policy_v2, whatif
+from typing import Any, Dict, List
+from .hist import get_bars_for_date, _slice_upto_hhmm, build_snapshot_at, analyze_snapshot, load_policy_v2, whatif, historical_plan
 
 router = APIRouter(prefix="/api/v2/hist", tags=["hist"])
 
@@ -29,3 +29,19 @@ def hist_analyze(symbol: str, date: str, time: str = Query(..., regex=r"^\d{2}:\
 def hist_whatif(symbol: str, date: str, time: str,
                 entry: float, stop: float, tp2: float, risk_amt: float, lot: int = 1):
     return whatif(entry, stop, tp2, risk_amt, lot)
+
+@router.get("/plan")
+def hist_plan(date: str, top: int = Query(10, ge=1, le=100), time: str = "15:10") -> List[Dict[str, Any]]:
+    """
+    Get top trading opportunities for a historical date.
+    
+    Args:
+        date: Date in YYYY-MM-DD format
+        top: Number of top opportunities to return (default 10, max 100)
+        time: Time of day in HH:MM format (default 15:10 - near market close)
+    
+    Returns:
+        List of top trading opportunities ranked by score
+    """
+    rows = historical_plan(date, time, top)
+    return rows

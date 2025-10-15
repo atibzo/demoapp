@@ -356,3 +356,72 @@ def whatif(entry: float, stop: float, tp2: float, risk_amt: float, lot: int=1) -
         "qty": qty, "notional": round(notional,2), "r": 1.0, "rr": round(rr,2),
         "fees": 0, "slip_mult_atr": 0.0, "expectancy": None
     }
+
+# -------- Historical Plan (Top opportunities for a date) ----------------------
+
+def get_symbols_for_date(date_yyyy_mm_dd: str) -> List[str]:
+    """Return list of symbols that have bars recorded for the given date."""
+    r = _get_redis()
+    if not r:
+        return []
+    # Scan for all bars:*:<date> keys
+    pattern = f"bars:*:{date_yyyy_mm_dd}"
+    symbols = []
+    for key in r.scan_iter(match=pattern, count=1000):
+        # key format: bars:<SYMBOL>:<DATE>
+        parts = key.split(":")
+        if len(parts) == 3:
+            symbols.append(parts[1])
+    return sorted(set(symbols))
+
+def historical_plan(date_yyyy_mm_dd: str, time_hhmm: str = "15:10", top_n: int = 10) -> List[Dict[str,Any]]:
+    """
+    Generate a plan (top opportunities) for a historical date.
+    Scans all symbols with bars for that date, analyzes them at the given time,
+    and returns top_n ranked by score.
+    """
+    policy = load_policy_v2()
+    symbols = get_symbols_for_date(date_yyyy_mm_dd)
+    
+    if not symbols:
+        return []
+    
+    rows = []
+    for sym in symbols:
+        bars = get_bars_for_date(sym, date_yyyy_mm_dd)
+        if not bars:
+            continue
+        
+        # Slice bars up to the specified time
+        upto = _slice_upto_hhmm(bars, time_hhmm)
+        if not upto:
+            continue
+        
+        # Build snapshot and analyze
+        snap = build_snapshot_at(sym, upto)
+        if not snap:
+            continue
+        
+        analysis = analyze_snapshot(snap, policy)
+        if not analysis:
+            continue
+        
+        # Extract key fields for plan row
+        score = analysis.get("confidence", 0.0) * 10.0  # Scale to 0-10 range
+        side = "long" if analysis.get("decision") == "BUY" else "short"
+        
+        rows.append({
+            "symbol": sym,
+            "side": side,
+            "score": round(score, 1),
+            "confidence": analysis.get("confidence", 0.0),
+            "age_s": 0.0,  # Historical data has no age
+            "delta_trigger_bps": analysis.get("risk", {}).get("delta_trigger_bps", 0.0),
+            "regime": analysis.get("meta", {}).get("regime", "Normal"),
+            "readiness": "Ready",  # Historical data is always "ready"
+            "checks": analysis.get("why", {}).get("checks", {})
+        })
+    
+    # Sort by score descending
+    rows.sort(key=lambda x: x["score"], reverse=True)
+    return rows[:top_n]
