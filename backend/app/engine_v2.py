@@ -45,16 +45,10 @@ def save_policy(new_body: Dict) -> int:
     return int(rd.incr("policy:rev"))
 
 # --- helpers ---
-def market_open_ist() -> bool:
-    t = time.time()
-    lt = time.localtime(t + (IST.utcoffset(None) or 0).total_seconds())
-    hhmm = int(f"{lt.tm_hour:02d}{lt.tm_min:02d}")
-    return 915 <= hhmm <= 1530
-
 def window_status(pol: Dict) -> str:
-    t = time.time()
-    lt = time.localtime(t + (IST.utcoffset(None) or 0).total_seconds())
-    hhmm = f"{lt.tm_hour:02d}:{lt.tm_min:02d}"
+    from datetime import datetime
+    now = datetime.now(tz=IST)
+    hhmm = f"{now.hour:02d}:{now.minute:02d}"
     start = pol.get("entry_window", {}).get("start", "11:00")
     end   = pol.get("entry_window", {}).get("end", "15:10")
     if hhmm < start: return "early"
