@@ -33,10 +33,11 @@ function fmt(n?:number){ return (n===undefined||Number.isNaN(n)) ? '—' : n.toF
 export default function AnalystClient(){
   const sp = useSearchParams();
   const sym0 = sp.get('symbol') || 'NSE:INFY';
+  const date0 = sp.get('date') || '';
 
-  const [mode, setMode] = useState<'LIVE'|'HIST'>('HIST');
+  const [mode, setMode] = useState<'LIVE'|'HIST'>(date0 ? 'HIST' : 'HIST');
   const [symbol, setSymbol] = useState(sym0);
-  const [date, setDate] = useState<string>('');    // yyyy-mm-dd
+  const [date, setDate] = useState<string>(date0);    // yyyy-mm-dd
   const [bars, setBars] = useState<Bar[]>([]);
   const [ix, setIx] = useState<number>(0);
   const [az, setAz] = useState<Analyze>(null);
@@ -47,6 +48,13 @@ export default function AnalystClient(){
   const [loadingWhatif, setLoadingWhatif] = useState(false);
 
   const curBar = bars[ix];
+
+  // Auto-load if date is provided in URL
+  useEffect(() => {
+    if (date0 && sym0 && bars.length === 0) {
+      loadDay();
+    }
+  }, []);
 
   async function loadDay(){
     if(!symbol || !date) return;

@@ -268,6 +268,8 @@ function TopAlgos({session}:{session:Session|null}) {
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
   const [tod,setTod]=useState<{kind:'post11'|'allday'|'custom'; start?:string; end?:string}>({kind:'post11'});
+  const [dataMode,setDataMode]=useState<'LIVE'|'HISTORICAL'>('LIVE');
+  const [historicalDate,setHistoricalDate]=useState<string>('');
   const defaultLabel='Post-11';
 
   useEffect(()=>{
@@ -294,7 +296,20 @@ function TopAlgos({session}:{session:Session|null}) {
   async function refresh(){
     try{
       setLoading(true); setError(null);
-      const arr = await fetchPlanRows();
+      let arr: any[];
+      if (dataMode === 'HISTORICAL' && historicalDate) {
+        // Fetch historical data for specific date
+        const r = await fetch(`${API}/api/v2/hist/plan?date=${historicalDate}&top=10`, { cache: 'no-store' });
+        if (r.ok) {
+          arr = await r.json();
+          if (!Array.isArray(arr)) arr = [];
+        } else {
+          throw new Error('Failed to fetch historical data');
+        }
+      } else {
+        // Fetch live/current data
+        arr = await fetchPlanRows();
+      }
       setRows(arr);
     }catch(e:any){
       setError(e?.message||'Load error');
@@ -302,22 +317,26 @@ function TopAlgos({session}:{session:Session|null}) {
   }
 
   useEffect(()=>{ 
-    refresh(); 
-    const id=setInterval(refresh, session?.mode === 'LIVE' ? 8000 : 15000); // Slower polling when not live
-    return ()=>clearInterval(id); 
-  },[session?.mode]);
+    if (dataMode === 'LIVE') {
+      refresh(); 
+      const id=setInterval(refresh, session?.mode === 'LIVE' ? 8000 : 15000); // Slower polling when not live
+      return ()=>clearInterval(id);
+    }
+    // Don't auto-refresh for historical mode
+  },[session?.mode, dataMode]);
 
   return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-4 md:py-6">
-    <div className="mb-2 flex items-center justify-between">
+    <div className="mb-3 flex items-center justify-between">
       <div className="flex items-center gap-2">
         <div className="text-sm font-semibold">Top Algos</div>
-        <Chip label={session?.mode||'HISTORICAL'} tone={session?.mode==='LIVE'?'ok':session?.mode==='WAITING'?'warn':'neutral'} />
+        <Chip label={dataMode === 'HISTORICAL' && historicalDate ? `Historical (${historicalDate})` : session?.mode||'HISTORICAL'} 
+              tone={dataMode === 'HISTORICAL' ? 'neutral' : session?.mode==='LIVE'?'ok':session?.mode==='WAITING'?'warn':'neutral'} />
       </div>
       <div className="flex items-center gap-3">
         <ToDControl value={tod} onChange={setTod} onSaveDefault={saveTodDefault} defaultLabel={defaultLabel} />
         <button 
           onClick={refresh} 
-          disabled={loading} 
+          disabled={loading || (dataMode === 'HISTORICAL' && !historicalDate)} 
           className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all hover:bg-zinc-800">
           {loading && <Spinner size="sm" />}
           {loading ? 'Scanning...' : 'Run Scan'}
@@ -325,13 +344,73 @@ function TopAlgos({session}:{session:Session|null}) {
       </div>
     </div>
 
+    <div className="mb-3 rounded-xl border border-zinc-200 bg-white p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 text-sm">
+          <label className="inline-flex items-center gap-1.5 cursor-pointer">
+            <input 
+              type="radio" 
+              checked={dataMode==='LIVE'} 
+              onChange={()=>{setDataMode('LIVE'); setHistoricalDate('');}}
+              className="cursor-pointer" />
+            <span>Live Data</span>
+          </label>
+          <label className="inline-flex items-center gap-1.5 cursor-pointer">
+            <input 
+              type="radio" 
+              checked={dataMode==='HISTORICAL'} 
+              onChange={()=>setDataMode('HISTORICAL')}
+              className="cursor-pointer" />
+            <span>Historical Data</span>
+          </label>
+        </div>
+        
+        {dataMode === 'HISTORICAL' && (
+          <div className="flex items-center gap-2 animate-fadeIn">
+            <label className="text-xs text-zinc-600">Select Date:</label>
+            <input 
+              type="date" 
+              value={historicalDate} 
+              onChange={e=>setHistoricalDate(e.target.value)}
+              max={new Date().toISOString().split('T')[0]}
+              className="rounded-xl border border-zinc-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-zinc-900 focus:border-transparent" />
+            {historicalDate && (
+              <span className="text-xs text-zinc-500">
+                Data from {new Date(historicalDate).toLocaleDateString('en-IN', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+              </span>
+            )}
+          </div>
+        )}
+        
+        {dataMode === 'LIVE' && (
+          <div className="text-xs text-zinc-500 flex items-center gap-1.5">
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <circle cx="10" cy="10" r="10" className="text-emerald-500 animate-pulse"/>
+            </svg>
+            <span>Auto-refreshing every {session?.mode === 'LIVE' ? '8' : '15'}s</span>
+          </div>
+        )}
+      </div>
+    </div>
+
     {error && <div className="mb-2 rounded-xl bg-amber-100 text-amber-800 px-3 py-2 text-sm animate-pulse">{error}</div>}
+
+    {dataMode === 'HISTORICAL' && !historicalDate && (
+      <div className="mb-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 px-3 py-2 text-sm animate-fadeIn">
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+          </svg>
+          <span>Select a date above and click "Run Scan" to view historical trading opportunities</span>
+        </div>
+      </div>
+    )}
 
     {loading && rows.length === 0 && (
       <div className="rounded-2xl border border-zinc-200 p-8 text-center">
         <div className="flex flex-col items-center gap-3">
           <Spinner size="lg" />
-          <div className="text-sm text-zinc-600">Scanning for opportunities...</div>
+          <div className="text-sm text-zinc-600">{dataMode === 'HISTORICAL' ? 'Loading historical data...' : 'Scanning for opportunities...'}</div>
         </div>
       </div>
     )}
@@ -373,13 +452,19 @@ function TopAlgos({session}:{session:Session|null}) {
                 </div>
               </td>
               <td className="px-3 py-2">
-                <Link className="underline text-blue-600" href={`/analyst?symbol=${encodeURIComponent(r.symbol)}`}>Open</Link>
+                <Link 
+                  className="underline text-blue-600 hover:text-blue-800 transition-colors" 
+                  href={`/analyst?symbol=${encodeURIComponent(r.symbol)}${dataMode === 'HISTORICAL' && historicalDate ? `&date=${historicalDate}` : ''}`}>
+                  Open
+                </Link>
               </td>
             </tr>
           ))}
-          {rows.length===0 && (
+          {rows.length===0 && !loading && (
             <tr><td className="px-3 py-4 text-zinc-500" colSpan={11}>
-              No picks yet. If market is closed, charts will still render from historical data.
+              {dataMode === 'HISTORICAL' 
+                ? `No trading opportunities found for ${historicalDate ? new Date(historicalDate).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'the selected date'}. Try a different date or check if data is available.`
+                : 'No picks yet. If market is closed, charts will still render from historical data.'}
             </td></tr>
           )}
         </tbody>
