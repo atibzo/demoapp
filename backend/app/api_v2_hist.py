@@ -31,7 +31,7 @@ def hist_whatif(symbol: str, date: str, time: str,
     return whatif(entry, stop, tp2, risk_amt, lot)
 
 @router.get("/plan")
-def hist_plan(date: str, top: int = Query(10, ge=1, le=100), time: str = "15:10") -> List[Dict[str, Any]]:
+def hist_plan(date: str, top: int = Query(10, ge=1, le=100), time: str = "15:10") -> Dict[str, Any]:
     """
     Get top trading opportunities for a historical date.
     
@@ -41,7 +41,12 @@ def hist_plan(date: str, top: int = Query(10, ge=1, le=100), time: str = "15:10"
         time: Time of day in HH:MM format (default 15:10 - near market close)
     
     Returns:
-        List of top trading opportunities ranked by score
+        Object containing query metadata and list of top trading opportunities ranked by score
     """
     rows = historical_plan(date, time, top)
-    return rows
+    return {
+        "date": date,
+        "top": top,
+        "time": time,
+        "items": rows
+    }
