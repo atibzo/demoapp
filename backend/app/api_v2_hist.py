@@ -34,6 +34,7 @@ def hist_whatif(symbol: str, date: str, time: str,
 def hist_plan(date: str, top: int = Query(10, ge=1, le=100), time: str = "15:10") -> Dict[str, Any]:
     """
     Get top trading opportunities for a historical date.
+    Automatically fetches data from Kite API if not cached.
     
     Args:
         date: Date in YYYY-MM-DD format
@@ -43,10 +44,24 @@ def hist_plan(date: str, top: int = Query(10, ge=1, le=100), time: str = "15:10"
     Returns:
         Object containing query metadata and list of top trading opportunities ranked by score
     """
-    rows = historical_plan(date, time, top)
-    return {
-        "date": date,
-        "top": top,
-        "time": time,
-        "items": rows
-    }
+    try:
+        rows = historical_plan(date, time, top)
+        return {
+            "date": date,
+            "top": top,
+            "time": time,
+            "count": len(rows),
+            "items": rows
+        }
+    except Exception as e:
+        # Check if it's an authentication error
+        if "token" in str(e).lower() or "unauthorized" in str(e).lower():
+            raise HTTPException(
+                status_code=401, 
+                detail="Zerodha session expired or not authenticated. Please login to fetch historical data."
+            )
+        # Generic error
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate historical plan: {str(e)}"
+        )
