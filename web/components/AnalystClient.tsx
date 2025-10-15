@@ -264,10 +264,10 @@ export default function AnalystClient(){
           <input 
             value={symbol} 
             onChange={e=>setSymbol(e.target.value)} 
-            placeholder="Enter ANY symbol (e.g., NSE:INFY, NSE:TCS, NSE:RELIANCE)"
+            placeholder="ANY stock works! NSE:INFY, BSE:RELIANCE, NSE:BHEL, NSE:ZOMATO..."
             className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm" />
           <div className="text-xs text-slate-500 mt-1">
-            ✨ <strong>Works independently!</strong> No need to load in "Top Algos" first. Supports <strong>ANY NSE/BSE symbol</strong> - data is auto-fetched from Zerodha.
+            🚀 <strong>Universal Stock Analyzer</strong> - Works with <strong>ANY NSE/BSE stock</strong> (600+ in universe, but can find ANY valid symbol). Data auto-fetched from Zerodha. <strong>100% independent</strong> of Top Algos!
           </div>
         </div>
         <div className="flex items-center gap-2 text-sm">
@@ -325,24 +325,34 @@ export default function AnalystClient(){
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
             </svg>
             <div>
-              <div className="font-semibold mb-1">📊 How to use the Analyst (100% Independent):</div>
+              <div className="font-semibold mb-1">🚀 How to use the Universal Stock Analyzer:</div>
               <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li><strong>Enter ANY NSE/BSE symbol</strong> (e.g., NSE:INFY, NSE:RELIANCE, NSE:BHEL, NSE:TCS)</li>
-                <li><strong>Select a historical date</strong> (must be a past trading day)</li>
-                <li><strong>Click "Load Day"</strong> - data is automatically fetched from Zerodha if you're logged in</li>
-                <li><strong>Analyze the stock</strong> at any time during the trading day using the slider</li>
+                <li><strong>Enter ABSOLUTELY ANY NSE/BSE stock symbol</strong> - Examples: NSE:INFY, BSE:RELIANCE, NSE:BHEL, NSE:ZOMATO, NSE:TATAMOTORS, BSE:SBIN, etc.</li>
+                <li><strong>Select a historical date</strong> (must be a past trading day - not weekends/holidays)</li>
+                <li><strong>Click "Load Day"</strong> - Our ultra-robust system will find and fetch the data automatically!</li>
+                <li><strong>Analyze anywhere in the day</strong> using the time slider - see real-time analysis at any minute</li>
               </ol>
-              <div className="mt-3 p-2 rounded bg-blue-100 text-xs">
-                <div className="font-semibold mb-1">✨ <strong>Key Features:</strong></div>
-                <ul className="list-disc list-inside space-y-0.5 text-[11px]">
-                  <li><strong>100% Independent:</strong> No need to load symbols in "Top Algos" first!</li>
-                  <li><strong>Works with ANY symbol:</strong> Not limited to the top 300 list</li>
-                  <li><strong>Auto-fetch:</strong> Automatically fetches historical data from Zerodha</li>
-                  <li><strong>Cached:</strong> Once fetched, data is cached for faster access</li>
+              <div className="mt-3 p-2 rounded bg-gradient-to-br from-blue-100 to-cyan-100 text-xs border border-blue-300">
+                <div className="font-bold mb-2 text-blue-900">✨ Revolutionary Features:</div>
+                <ul className="list-disc list-inside space-y-1 text-[11px]">
+                  <li><strong>🌐 Universal Symbol Support:</strong> Works with ANY valid NSE/BSE stock - not limited to any predefined list!</li>
+                  <li><strong>🔍 Ultra-Robust Search:</strong> Tries multiple strategies to find your stock (exact match, with suffixes, cross-exchange, fuzzy match)</li>
+                  <li><strong>🎯 100% Independent:</strong> Zero dependency on "Top Algos" tab - completely standalone tool</li>
+                  <li><strong>⚡ Smart Auto-Fetch:</strong> Automatically fetches from Zerodha Kite API when needed</li>
+                  <li><strong>💾 Intelligent Caching:</strong> Data cached for instant re-access</li>
+                  <li><strong>📊 600+ Stock Universe:</strong> Expanded list for quick scanning, but analyzer works beyond it!</li>
                 </ul>
               </div>
-              <div className="mt-2 text-xs text-blue-700">
-                ⚠️ <strong>Important:</strong> Make sure you're logged in to Zerodha before trying to load data. Select a valid past trading day (not weekends/holidays/future dates).
+              <div className="mt-2 p-2 rounded bg-amber-50 text-xs border border-amber-300">
+                <div className="font-semibold mb-1 text-amber-900">⚠️ Requirements:</div>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-800">
+                  <li>Must be logged in to Zerodha (click "Login with Zerodha" button above)</li>
+                  <li>Date must be a past trading day (markets open Mon-Fri, excluding holidays)</li>
+                  <li>Symbol must be valid and traded on NSE/BSE exchanges</li>
+                </ul>
+              </div>
+              <div className="mt-2 text-xs text-green-700 font-medium">
+                💡 <strong>Pro Tip:</strong> Try any stock you want! The system is designed to find it, even if it's not in our curated list. Just enter the symbol and let the magic happen! ✨
               </div>
             </div>
           </div>

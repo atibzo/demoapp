@@ -126,19 +126,20 @@ def hist_plan(
     date: str, 
     top: int = Query(10, ge=1, le=100), 
     time: str = "15:10",
-    universe_size: int = Query(300, ge=50, le=300, description="Number of stocks to scan (default 300)")
+    universe_size: int = Query(300, ge=50, le=600, description="Number of stocks to scan (default 300, max 600)")
 ) -> Dict[str, Any]:
     """
     Get top trading opportunities for a historical date.
     Automatically fetches data from Kite API if not cached.
     
-    NOW SCANS TOP 300 INTRADAY TRADABLE STOCKS (configurable)!
+    NOW SCANS UP TO 600 INTRADAY TRADABLE STOCKS!
+    Uses ultra-robust instrument lookup that works with ANY valid NSE/BSE stock.
     
     Args:
         date: Date in YYYY-MM-DD format
         top: Number of top opportunities to return (default 10, max 100)
         time: Time of day in HH:MM format (default 15:10 - near market close)
-        universe_size: Number of stocks to scan (default 300, max 300)
+        universe_size: Number of stocks to scan (default 300, max 600)
     
     Returns:
         Object containing:

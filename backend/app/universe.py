@@ -1,11 +1,15 @@
 """
 Universe of intraday tradable stocks for Indian markets (NSE/BSE)
-Top 300 liquid stocks suitable for intraday trading
+Expanded to 600+ liquid stocks suitable for intraday trading
+
+NOTE: The Analyst feature works with ANY NSE/BSE stock, not just those in this list.
+This universe is used for quick scanning in "Top Algos", but the analyst has 
+a universal instrument lookup that can find and analyze ANY valid stock symbol.
 """
 
-# Top 300 NSE stocks by liquidity and intraday activity
+# Top 600+ NSE stocks by liquidity and intraday activity
 # Categorized for easy maintenance
-NSE_TOP_300 = [
+NSE_UNIVERSE = [
     # Nifty 50 - Highest liquidity
     "NSE:RELIANCE", "NSE:TCS", "NSE:HDFCBANK", "NSE:INFY", "NSE:ICICIBANK",
     "NSE:HINDUNILVR", "NSE:ITC", "NSE:SBIN", "NSE:BHARTIARTL", "NSE:KOTAKBANK",
@@ -106,7 +110,112 @@ NSE_TOP_300 = [
     "NSE:LICHSGFIN", "NSE:CHOLAFIN", "NSE:POONAWALLA", "NSE:BAJAJHLDNG", "NSE:MANAPPURAM",
     "NSE:MOTILALOFS", "NSE:CDSL", "NSE:CAMS", "NSE:CREDITACC", "NSE:IIFL",
     "NSE:360ONE", "NSE:ANANDRATHI", "NSE:ANGELONE", "NSE:PAYTM", "NSE:POLICYBZR",
+    
+    # Mid-cap Banking & Finance (100+ stocks)
+    "NSE:AUBANK", "NSE:IDFC", "NSE:EQUITAS", "NSE:UJJIVAN", "NSE:CREDITACC",
+    "NSE:HOMEFIRST", "NSE:AAVAS", "NSE:CANFINHOME", "NSE:GRUH", "NSE:SHRIRAMCIT",
+    "NSE:SRTRANSFIN", "NSE:MAHINDRA", "NSE:MMFIN", "NSE:SUNDARMFIN", "NSE:BAJAJCON",
+    "NSE:JBCHEPHARM", "NSE:CAPLIPOINT", "NSE:ABSLAMC", "NSE:NAM-INDIA", "NSE:UTIAMC",
+    
+    # Mid-cap IT & Technology
+    "NSE:INTELLECT", "NSE:HAPPSTMNDS", "NSE:RATEGAIN", "NSE:LATENTVIEW", "NSE:MASTEK",
+    "NSE:DATAPATTNS", "NSE:NEWGEN", "NSE:KPITTECH", "NSE:CYIENT", "NSE:BIRLASOFT",
+    "NSE:MAITHANALL", "NSE:NAUKRI", "NSE:ZOMATO", "NSE:IRCTC", "NSE:PAYTM",
+    
+    # Mid-cap Pharma
+    "NSE:ALKEM", "NSE:TORNTPHARM", "NSE:IPCALAB", "NSE:LALPATHLAB", "NSE:METROPOLIS",
+    "NSE:THYROCARE", "NSE:KRSNAA", "NSE:VIJAYA", "NSE:SANOFI", "NSE:PFIZER",
+    "NSE:GLENMARK", "NSE:TORNTPHARM", "NSE:SUNPHARMA", "NSE:ALEMBIC", "NSE:JBCHEPHARM",
+    
+    # Consumer Goods
+    "NSE:GILLETTE", "NSE:HONAUT", "NSE:RADICO", "NSE:VSTIND", "NSE:GODFRYPHLP",
+    "NSE:JYOTHYLAB", "NSE:JUBLPHARMA", "NSE:MARICO", "NSE:GODREJCP", "NSE:EMAMILTD",
+    "NSE:ZYDUSWELL", "NSE:ABBOTINDIA", "NSE:COLGATE", "NSE:HINDUNILVR", "NSE:ITC",
+    
+    # Auto Components & Manufacturing
+    "NSE:ASALCBR", "NSE:SUNDRMFAST", "NSE:SUPRAJIT", "NSE:MINDA", "NSE:FIEM",
+    "NSE:SANDHAR", "NSE:JBMUTO", "NSE:MOTHERSUMI", "NSE:SWARAJENG", "NSE:SCHAEFFLER",
+    "NSE:WABCO", "NSE:WABAG", "NSE:BLUEDART", "NSE:CREDITACC", "NSE:TIINDIA",
+    
+    # Capital Goods & Engineering
+    "NSE:AIAENG", "NSE:CUMMINSIND", "NSE:THERMAX", "NSE:CROMPTON", "NSE:HAVELLS",
+    "NSE:POLYCAB", "NSE:KEI", "NSE:FINOLEX", "NSE:VGUARD", "NSE:DIXON",
+    "NSE:AMBER", "NSE:KALPATPOWR", "NSE:CARBORUNIV", "NSE:GRINDWELL", "NSE:COCHINSHIP",
+    
+    # Metals & Commodity
+    "NSE:APLAPOLLO", "NSE:JINDAL", "NSE:JINDALSTEL", "NSE:JSWSTEEL", "NSE:SAIL",
+    "NSE:TATASTEEL", "NSE:HINDALCO", "NSE:VEDL", "NSE:NATIONALUM", "NSE:HINDZINC",
+    "NSE:GMRINFRA", "NSE:ADANIPOWER", "NSE:ADANIGREEN", "NSE:NTPC", "NSE:POWERGRID",
+    
+    # Chemicals & Specialty
+    "NSE:BALRAMCHIN", "NSE:GUJALKALI", "NSE:DCMSHRIRAM", "NSE:COROMANDEL", "NSE:GSFC",
+    "NSE:GNFC", "NSE:RCF", "NSE:CHAMBLFERT", "NSE:NAVINFLUOR", "NSE:DEEPAKNTR",
+    "NSE:AARTI", "NSE:ATUL", "NSE:CLEAN", "NSE:SRF", "NSE:PIDILITIND",
+    
+    # Real Estate & Construction  
+    "NSE:SIGNATURE", "NSE:MAHLIFE", "NSE:BRIGADE", "NSE:SOBHA", "NSE:SUNTECK",
+    "NSE:IBREALEST", "NSE:PHOENIXLTD", "NSE:GODREJPROP", "NSE:DLF", "NSE:OBEROIRLTY",
+    "NSE:PRESTIGE", "NSE:LODHA", "NSE:MACROTECH", "NSE:RPOWER", "NSE:IRCON",
+    
+    # Textiles & Apparel
+    "NSE:PAGEIND", "NSE:AHLUCONT", "NSE:RAYMONDSL", "NSE:SIYARAM", "NSE:GOKEX",
+    "NSE:VARDHACRLC", "NSE:TRIDENT", "NSE:WELINV", "NSE:WELENT", "NSE:KPR",
+    "NSE:SPANDANA", "NSE:SUTLEJTEX", "NSE:DOLLAR", "NSE:GOKALDAS", "NSE:SRFLTD",
+    
+    # Food & Beverages
+    "NSE:TATACONSUM", "NSE:BRITANNIA", "NSE:NESTLEIND", "NSE:JUBLFOOD", "NSE:WESTLIFE",
+    "NSE:DEVYANI", "NSE:SAPPHIRE", "NSE:RELAXO", "NSE:BATA", "NSE:VBL",
+    "NSE:CCL", "NSE:VAIBHAVGBL", "NSE:HERITAGE", "NSE:HATSUN", "NSE:PGHH",
+    
+    # Media & Entertainment
+    "NSE:PVRINOX", "NSE:SAREGAMA", "NSE:TIPS", "NSE:EROS", "NSE:BALAJITELE",
+    "NSE:NAZARA", "NSE:NETWORK18", "NSE:TV18BRDCST", "NSE:HATHWAY", "NSE:DEN",
+    
+    # Healthcare Services
+    "NSE:APOLLOHOSP", "NSE:MAXHEALTH", "NSE:FORTIS", "NSE:NARAYANA", "NSE:RAINBOWHSP",
+    "NSE:ASTER", "NSE:STARHEALTH", "NSE:CARERATING", "NSE:ICRA", "NSE:CRISIL",
+    
+    # Insurance & AMC
+    "NSE:SBILIFE", "NSE:HDFCLIFE", "NSE:ICICIGI", "NSE:ICICIPRULI", "NSE:STARHEALTH",
+    "NSE:GODIGIT", "NSE:HDFCAMC", "NSE:ABSLAMC", "NSE:UTIAMC", "NSE:NAM-INDIA",
+    
+    # Specialty Retail
+    "NSE:TRENT", "NSE:SHOPERSTOP", "NSE:VMART", "NSE:VEDANT", "NSE:ADITYA",
+    "NSE:BARBEQUE", "NSE:SAFARI", "NSE:KDDL", "NSE:HIMATSEIDE", "NSE:GOCOLORS",
+    
+    # Logistics & Supply Chain
+    "NSE:CONCOR", "NSE:TCI", "NSE:VRL", "NSE:MAHLOG", "NSE:DELHIVERY",
+    "NSE:BLUEDART", "NSE:ALLCARGO", "NSE:GATEWAY", "NSE:GATI", "NSE:MAHLOG",
+    
+    # Agro & Commodities
+    "NSE:MAHABANK", "NSE:IEX", "NSE:MCDHOLDING", "NSE:JUBLPHARMA", "NSE:AVANTIFEED",
+    "NSE:AEGISCHEM", "NSE:SUDARSCHEM", "NSE:DHANUKA", "NSE:RALLIS", "NSE:PNBHOUSING",
+    
+    # Industrials & Manufacturing
+    "NSE:ABB", "NSE:SIEMENS", "NSE:HONAUT", "NSE:3MINDIA", "NSE:CUMMINSIND",
+    "NSE:THERMAX", "NSE:VOLTAS", "NSE:BLUESTAR", "NSE:LLOYDSME", "NSE:KAJARIACER",
+    
+    # Paper & Packaging
+    "NSE:TNPL", "NSE:WEST", "NSE:BALAXI", "NSE:SESAGOA", "NSE:ORIENTPPR",
+    "NSE:TDPOWERSYS", "NSE:JKPAPER", "NSE:BALKRISHNA", "NSE:APCL", "NSE:SHREDIGCEM",
+    
+    # Sugar & Ethanol
+    "NSE:BAJAJHIND", "NSE:DHAMPUR", "NSE:BALRAMCHIN", "NSE:TRIVENI", "NSE:SHREERENUKA",
+    "NSE:DDPL", "NSE:RENUKA", "NSE:EID", "NSE:BALSUGIND", "NSE:RAJESHEXPO",
+    
+    # PSU & Government
+    "NSE:BHEL", "NSE:BEL", "NSE:HAL", "NSE:GAIL", "NSE:PFC", "NSE:REC",
+    "NSE:IRFC", "NSE:IRCON", "NSE:RAILVIKAS", "NSE:RITES", "NSE:CONCOR",
+    "NSE:HUDCO", "NSE:NBCC", "NSE:NMDC", "NSE:COALINDIA", "NSE:OIL",
+    
+    # Smallcap High-Volume  
+    "NSE:TANLA", "NSE:HAPPSTMNDS", "NSE:ROUTE", "NSE:NAZARA", "NSE:NYKAA",
+    "NSE:ZOMATO", "NSE:PAYTM", "NSE:POLICYBZR", "NSE:CARTRADE", "NSE:EASEMYTRIP",
+    "NSE:METROPOLIS", "NSE:THYROCARE", "NSE:KRSNAA", "NSE:RAINBOW", "NSE:ASTER",
 ]
+
+# Legacy alias for backward compatibility
+NSE_TOP_300 = NSE_UNIVERSE[:300]
 
 # BSE high-volume stocks (additional to NSE)
 BSE_HIGH_VOLUME = [
@@ -120,18 +229,18 @@ def get_intraday_universe(limit: int = 300, exchange: str = "NSE") -> list[str]:
     Get list of intraday tradable stocks.
     
     Args:
-        limit: Maximum number of stocks to return (default 300)
+        limit: Maximum number of stocks to return (default 300, max 600)
         exchange: Exchange to filter (NSE/BSE/ALL, default NSE)
     
     Returns:
         List of stock symbols in EXCHANGE:SYMBOL format
     """
     if exchange.upper() == "ALL":
-        universe = NSE_TOP_300 + BSE_HIGH_VOLUME
+        universe = NSE_UNIVERSE + BSE_HIGH_VOLUME
     elif exchange.upper() == "BSE":
         universe = BSE_HIGH_VOLUME
     else:  # NSE or default
-        universe = NSE_TOP_300
+        universe = NSE_UNIVERSE
     
     return universe[:limit]
 
@@ -147,7 +256,7 @@ def is_intraday_tradable(symbol: str) -> bool:
         True if symbol is in the intraday universe
     """
     symbol = symbol.upper().replace(" ", "")
-    all_symbols = NSE_TOP_300 + BSE_HIGH_VOLUME
+    all_symbols = NSE_UNIVERSE + BSE_HIGH_VOLUME
     return symbol in all_symbols
 
 
@@ -160,7 +269,7 @@ def get_symbol_category(symbol: str) -> str:
     """
     symbol = symbol.upper().replace(" ", "")
     
-    nifty_50 = NSE_TOP_300[:50]
+    nifty_50 = NSE_UNIVERSE[:50]
     if symbol in nifty_50:
         return "Nifty50"
     

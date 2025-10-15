@@ -374,9 +374,102 @@ def get_symbols_for_date(date_yyyy_mm_dd: str) -> List[str]:
             symbols.append(parts[1])
     return sorted(set(symbols))
 
+def _find_instrument_token_robust(ks, symbol: str) -> tuple[int | None, str | None]:
+    """
+    ULTRA-ROBUST instrument token finder with multiple fallback strategies.
+    Tries EVERYTHING to find the stock, regardless of exchange or format.
+    
+    Returns: (token, exchange) tuple or (None, None) if not found
+    """
+    import logging
+    log = logging.getLogger(__name__)
+    
+    # Parse symbol
+    if ":" in symbol:
+        preferred_exchange, tradingsymbol = symbol.split(":", 1)
+    else:
+        preferred_exchange, tradingsymbol = "NSE", symbol
+    
+    tradingsymbol = tradingsymbol.upper().strip()
+    preferred_exchange = preferred_exchange.upper().strip()
+    
+    log.info(f"[ROBUST_LOOKUP] Starting search for {symbol} (exchange: {preferred_exchange}, symbol: {tradingsymbol})")
+    
+    # Strategy 1: Try preferred exchange with multiple variants
+    exchanges_to_try = [preferred_exchange]
+    
+    # Strategy 2: If not found on preferred, try other major exchanges
+    if preferred_exchange == "NSE":
+        exchanges_to_try.extend(["BSE", "NFO"])
+    elif preferred_exchange == "BSE":
+        exchanges_to_try.extend(["NSE", "BFO"])
+    else:
+        exchanges_to_try.extend(["NSE", "BSE"])
+    
+    for exchange in exchanges_to_try:
+        try:
+            log.info(f"[ROBUST_LOOKUP] Trying exchange: {exchange}")
+            instruments = ks.instruments(exchange)
+            log.info(f"[ROBUST_LOOKUP] Loaded {len(instruments)} instruments from {exchange}")
+            
+            # Create variations to try
+            variations = [
+                tradingsymbol,                           # Exact as provided
+                f"{tradingsymbol}-EQ",                   # With -EQ suffix (equity)
+                f"{tradingsymbol}-BE",                   # With -BE suffix (trade-to-trade)
+                tradingsymbol.replace("-EQ", ""),        # Without -EQ if provided
+                tradingsymbol.replace("-BE", ""),        # Without -BE if provided
+                tradingsymbol.replace("&", "%26"),       # URL encoded ampersand
+                tradingsymbol.replace("%26", "&"),       # Decoded ampersand
+            ]
+            
+            # Try each variation
+            for variant in variations:
+                for inst in instruments:
+                    inst_symbol = inst.get("tradingsymbol", "").upper()
+                    
+                    # Exact match
+                    if inst_symbol == variant.upper():
+                        token = inst.get("instrument_token")
+                        log.info(f"[ROBUST_LOOKUP] ✅ FOUND on {exchange}: {variant} -> token {token}")
+                        return token, exchange
+                    
+                    # Fuzzy match (contains)
+                    if tradingsymbol in inst_symbol and abs(len(inst_symbol) - len(tradingsymbol)) <= 3:
+                        token = inst.get("instrument_token")
+                        log.info(f"[ROBUST_LOOKUP] ✅ FUZZY MATCH on {exchange}: {inst_symbol} -> token {token}")
+                        return token, exchange
+            
+            log.info(f"[ROBUST_LOOKUP] Not found on {exchange}, trying next...")
+        except Exception as e:
+            log.error(f"[ROBUST_LOOKUP] Error searching {exchange}: {e}")
+            continue
+    
+    # Strategy 3: Last resort - search ALL exchanges
+    log.warning(f"[ROBUST_LOOKUP] Not found on primary exchanges, searching ALL exchanges...")
+    try:
+        all_instruments = ks.instruments()
+        log.info(f"[ROBUST_LOOKUP] Loaded {len(all_instruments)} instruments from ALL exchanges")
+        
+        for inst in all_instruments:
+            inst_symbol = inst.get("tradingsymbol", "").upper()
+            # Try exact and fuzzy match
+            if inst_symbol == tradingsymbol.upper() or (tradingsymbol in inst_symbol and len(inst_symbol) <= len(tradingsymbol) + 3):
+                token = inst.get("instrument_token")
+                exch = inst.get("exchange", "UNKNOWN")
+                log.info(f"[ROBUST_LOOKUP] ✅ FOUND on {exch} (global search): {inst_symbol} -> token {token}")
+                return token, exch
+    except Exception as e:
+        log.error(f"[ROBUST_LOOKUP] Error in global search: {e}")
+    
+    log.error(f"[ROBUST_LOOKUP] ❌ FAILED: Could not find instrument token for {symbol} on any exchange")
+    return None, None
+
+
 def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[Dict[str, Any]]:
     """
     Fetch historical bars from Kite API and cache in Redis.
+    Uses ULTRA-ROBUST instrument lookup that can find ANY valid stock.
     Returns the bars or [] if fetch fails.
     """
     import logging
@@ -390,65 +483,38 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
         # Check if we already have the data cached
         cached = get_bars_for_date(symbol, date_yyyy_mm_dd)
         if cached:
-            log.info(f"Cache hit for {symbol} on {date_yyyy_mm_dd}")
+            log.info(f"[FETCH] Cache hit for {symbol} on {date_yyyy_mm_dd}")
             return cached
         
-        log.info(f"Fetching historical data for {symbol} on {date_yyyy_mm_dd} from Kite API")
-        
-        # Extract exchange and tradingsymbol
-        if ":" in symbol:
-            exchange, tradingsymbol = symbol.split(":", 1)
-        else:
-            exchange, tradingsymbol = "NSE", symbol
+        log.info(f"[FETCH] Fetching historical data for {symbol} on {date_yyyy_mm_dd} from Kite API")
         
         # Get Kite session and check authentication
         kite_session = get_kite()
         if not kite_session.access_token:
-            log.error(f"Not logged in to Zerodha. Please login to fetch historical data.")
+            log.error(f"[FETCH] Not logged in to Zerodha. Please login to fetch historical data.")
             return []
         
         ks = kite_session.kite
         if not ks:
-            log.error(f"Kite session not initialized.")
+            log.error(f"[FETCH] Kite session not initialized.")
             return []
         
-        # Find instrument token
-        token = None
-        try:
-            log.info(f"Fetching instruments list for exchange: {exchange}")
-            instruments = ks.instruments(exchange)
-            log.info(f"Found {len(instruments) if instruments else 0} instruments on {exchange}")
-            
-            # Try exact match first
-            for inst in instruments:
-                if inst.get("tradingsymbol", "").upper() == tradingsymbol.upper():
-                    token = inst.get("instrument_token")
-                    log.info(f"Found exact match: {tradingsymbol} -> token {token}")
-                    break
-            
-            # If no exact match, try with EQ suffix (common for NSE equity)
-            if not token and not tradingsymbol.endswith("-EQ"):
-                tradingsymbol_eq = f"{tradingsymbol}-EQ"
-                for inst in instruments:
-                    if inst.get("tradingsymbol", "").upper() == tradingsymbol_eq.upper():
-                        token = inst.get("instrument_token")
-                        log.info(f"Found match with -EQ suffix: {tradingsymbol_eq} -> token {token}")
-                        break
-        except Exception as e:
-            log.error(f"Failed to get instruments list for {exchange}: {e}", exc_info=True)
-            return []
+        # Use ULTRA-ROBUST instrument lookup
+        token, found_exchange = _find_instrument_token_robust(ks, symbol)
         
         if not token:
-            log.error(f"Instrument token not found for {symbol} (exchange: {exchange}, tradingsymbol: {tradingsymbol}). "
-                     f"Tried: {tradingsymbol}, {tradingsymbol}-EQ. Please verify the symbol is valid and traded on {exchange}.")
+            log.error(f"[FETCH] ❌ Could not find instrument token for {symbol} on any exchange. "
+                     f"Please verify the symbol is correct. Examples: NSE:INFY, BSE:RELIANCE, NSE:BHEL")
             return []
+        
+        log.info(f"[FETCH] Using token {token} from exchange {found_exchange}")
         
         # Fetch historical data from Kite
         ist = ZoneInfo("Asia/Kolkata")
         start_ist = _dt.fromisoformat(f"{date_yyyy_mm_dd}T09:15:00").replace(tzinfo=ist)
         end_ist = _dt.fromisoformat(f"{date_yyyy_mm_dd}T15:30:00").replace(tzinfo=ist)
         
-        log.info(f"Fetching historical data for token {token} from {start_ist} to {end_ist}")
+        log.info(f"[FETCH] Requesting data for token {token} from {start_ist} to {end_ist}")
         
         try:
             data = ks.historical_data(
@@ -460,17 +526,18 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
                 oi=False,
             )
         except Exception as e:
-            log.error(f"Failed to fetch historical data for {symbol} (token: {token}): {e}", exc_info=True)
+            log.error(f"[FETCH] ❌ Failed to fetch historical data for {symbol} (token: {token}): {e}", exc_info=True)
             return []
         
         if not data:
-            log.warning(f"No data returned from Kite API for {symbol} on {date_yyyy_mm_dd}. "
-                       f"Possible reasons: (1) Market was closed on this date, (2) No trading activity, "
-                       f"(3) Date is in the future, or (4) Symbol was not traded on this date. "
-                       f"Please verify the date and try a recent trading day.")
+            log.warning(f"[FETCH] No data returned from Kite API for {symbol} on {date_yyyy_mm_dd}. "
+                       f"Possible reasons: (1) Market was closed on this date (weekend/holiday), "
+                       f"(2) No trading activity on this stock, (3) Date is in the future, "
+                       f"or (4) Symbol was not traded on this date (e.g., newly listed or delisted). "
+                       f"Please verify the date is a valid trading day and try a recent date.")
             return []
         
-        log.info(f"Successfully fetched {len(data)} candles for {symbol} on {date_yyyy_mm_dd}")
+        log.info(f"[FETCH] ✅ Successfully fetched {len(data)} candles for {symbol} on {date_yyyy_mm_dd}")
         
         # Convert Kite format to our format
         bars = []
@@ -502,13 +569,14 @@ def historical_plan(date_yyyy_mm_dd: str, time_hhmm: str = "15:10", top_n: int =
     Fetches data from Kite API if not cached, analyzes them at the given time,
     and returns top_n ranked by score.
     
-    Now supports up to 300 intraday tradable stocks!
+    Now supports up to 600 intraday tradable stocks!
+    Uses ultra-robust instrument lookup that can find ANY valid NSE/BSE stock.
     
     Args:
         date_yyyy_mm_dd: Date in YYYY-MM-DD format
         time_hhmm: Time in HH:MM format (default 15:10)
         top_n: Number of top results to return (default 10)
-        universe_size: Number of stocks to scan (default 300, max 300)
+        universe_size: Number of stocks to scan (default 300, max 600)
     """
     from .universe import get_intraday_universe
     import logging
