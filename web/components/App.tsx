@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { API, j } from '@/lib/api';
 import ErrorBoundary from './ErrorBoundary';
+import AnalystClient from './AnalystClient';
 
 /* ------------------------------------------------------------------ *
  * Types & helpers
@@ -203,7 +204,7 @@ function Header({ session, onLogin }:{session:Session|null; onLogin:()=>void}) {
 }
 
 function Tabs({tab,setTab}:{tab:string; setTab:(t:string)=>void}) {
-  const items=['Top Algos','Watch','Journal','Policy','Config'];
+  const items=['Top Algos','Watch','Analyst','Journal','Policy','Config'];
   return <nav className="border-b border-zinc-200 bg-white">
     <div className="mx-auto max-w-[1200px] px-3 md:px-6">
       <div className="flex flex-wrap gap-2 py-2">
@@ -422,8 +423,12 @@ function Watch({session}:{session:Session|null}) {
 }
 
 /* ------------------------------------------------------------------ *
- * Analyst - removed, use /analyst page instead
+ * Analyst
  * ------------------------------------------------------------------ */
+
+function Analyst({session}:{session:Session|null}) {
+  return <AnalystClient />;
+}
 
 /* ------------------------------------------------------------------ *
  * Journal + Config
@@ -652,6 +657,7 @@ export default function App() {
       <ErrorBoundary>
         {tab === 'Top Algos' && <TopAlgos session={session} />}
         {tab === 'Watch' && <Watch session={session} />}
+        {tab === 'Analyst' && <Analyst session={session} />}
         {tab === 'Journal' && <Journal />}
         {tab === 'Policy' && <PolicyForm />}
         {tab === 'Config' && <Config />}
