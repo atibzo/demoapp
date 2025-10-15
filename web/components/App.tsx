@@ -276,6 +276,7 @@ function ToDControl({
 }
 
 function TopAlgos({session}:{session:Session|null}) {
+  console.log('📊 TopAlgos component mounting');
   const [rows,setRows]=useState<any[]>([]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
@@ -283,6 +284,7 @@ function TopAlgos({session}:{session:Session|null}) {
   const [dataMode,setDataMode]=useState<'LIVE'|'HISTORICAL'>('LIVE');
   const [historicalDate,setHistoricalDate]=useState<string>('');
   const defaultLabel='Post-11';
+  console.log('📊 TopAlgos initial state - dataMode:', dataMode, 'historicalDate:', historicalDate);
 
   useEffect(()=>{
     const onStorage = (e: StorageEvent) => { if (e.key==='policy_rev_hint') refresh(); };
@@ -344,6 +346,11 @@ function TopAlgos({session}:{session:Session|null}) {
   },[session?.mode, dataMode]);
 
   return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
+    {/* DEBUG INFO - REMOVE LATER */}
+    <div className="mb-4 rounded-xl bg-yellow-100 border-2 border-yellow-500 p-3 text-xs font-mono">
+      <div>🐛 DEBUG: dataMode={dataMode} | historicalDate={historicalDate} | rows={rows.length} | loading={loading ? 'true' : 'false'}</div>
+    </div>
+    
     <div className="mb-4 flex items-center justify-between">
       <div className="flex items-center gap-3">
         <div className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Top Algos</div>
@@ -354,6 +361,7 @@ function TopAlgos({session}:{session:Session|null}) {
         <ToDControl value={tod} onChange={setTod} onSaveDefault={saveTodDefault} defaultLabel={defaultLabel} />
         <button 
           onClick={() => {
+            alert(`🔍 Button clicked!\ndataMode: ${dataMode}\ndate: ${historicalDate}\ndisabled: ${loading || (dataMode === 'HISTORICAL' && !historicalDate)}`);
             console.log('Run Scan clicked - dataMode:', dataMode, 'date:', historicalDate);
             refresh();
           }} 
@@ -820,6 +828,7 @@ function Num({value, onChange, step=1}:{value:number; onChange:(v:number)=>void;
  * ------------------------------------------------------------------ */
 
 export default function App() {
+  console.log('🚀 App component mounting');
   const [session, setSession] = useState<Session | null>(null);
   const [tab, setTab] = useState('Top Algos');
   const lastRevRef = useRef<number | null>(null);
