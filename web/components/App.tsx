@@ -641,54 +641,203 @@ function Config() {
   const [pinText,setPinText]=useState(''); const [limit,setLimit]=useState(300);
   const [loading,setLoading]=useState(false);
   const [saving,setSaving]=useState(false);
+  const [error,setError]=useState<string|null>(null);
+  
   async function load(){ 
     try{
       setLoading(true);
+      setError(null);
       const c=await j(await fetch(`${API}/api/config`)); 
       setCfg(c); 
-      setPinText((c.pinned||[]).join(',')); 
+      setPinText((c.pinned||[]).join(', ')); 
       setLimit(c.universe_limit||300);
+    }catch(e:any){
+      setError(e?.message || 'Failed to load config');
     }finally{
       setLoading(false);
     }
   }
+  
   async function save(){
     try{
       setSaving(true);
-      await fetch(`${API}/api/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ pinned: pinText.split(',').map(s=>s.trim()).filter(Boolean), universe_limit: limit })});
+      setError(null);
+      
+      // Validate limit
+      const numLimit = parseInt(limit.toString());
+      if (isNaN(numLimit) || numLimit < 1 || numLimit > 600) {
+        setError('Universe limit must be between 1 and 600');
+        return;
+      }
+      
+      // Parse pinned symbols
+      const pinnedArray = pinText.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+      
+      await fetch(`${API}/api/config`, { 
+        method:'POST', 
+        headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify({ 
+          pinned: pinnedArray, 
+          universe_limit: numLimit 
+        })
+      });
+      
       await load(); 
-      alert('Saved');
+      alert('✅ Configuration saved successfully! Settings will take effect on next ticker refresh.');
+    }catch(e:any){
+      setError(e?.message || 'Failed to save config');
     }finally{
       setSaving(false);
     }
   }
+  
   useEffect(()=>{ load(); },[]);
+  
   return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
+    <div className="mb-4">
+      <div className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Configuration</div>
+      <div className="text-sm text-slate-500 mt-1">Configure live ticker subscriptions and pinned symbols</div>
+    </div>
+
+    {error && (
+      <div className="mb-4 rounded-xl bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm animate-fadeIn">
+        <div className="flex items-center gap-2">
+          <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          </svg>
+          <span>{error}</span>
+        </div>
+      </div>
+    )}
+
     <div className="grid gap-4 max-w-2xl">
       <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-5">
-        <div className="text-sm font-bold text-slate-800 mb-2">Pinned symbols</div>
-        <input value={pinText} onChange={e=>setPinText(e.target.value)} placeholder="RELIANCE,INFY,ICICIBANK or EXCH:SYMBOL" className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-        <div className="text-xs text-slate-500 mt-2">Use EXCH:SYMBOL when ambiguous across exchanges.</div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-sm font-bold text-slate-800">Pinned Symbols</div>
+            <div className="text-xs text-slate-500 mt-1">Symbols that should always be monitored (regardless of universe limit)</div>
+          </div>
+          <span className="text-xs text-slate-400 font-mono">{pinText.split(',').filter(Boolean).length} pinned</span>
+        </div>
+        <input 
+          value={pinText} 
+          onChange={e=>setPinText(e.target.value)} 
+          placeholder="NSE:RELIANCE, NSE:INFY, NSE:ICICIBANK (comma-separated)"
+          className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono" />
+        <div className="mt-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
+          <div className="text-xs font-semibold text-blue-900 mb-1">💡 Pro Tips:</div>
+          <ul className="text-xs text-blue-800 space-y-1">
+            <li>• Use <code className="bg-blue-100 px-1 py-0.5 rounded">NSE:SYMBOL</code> format (e.g., NSE:INFY, NSE:RELIANCE)</li>
+            <li>• Pinned symbols are loaded first and always monitored</li>
+            <li>• Use commas to separate multiple symbols</li>
+            <li>• Great for your favorite stocks or active watchlist</li>
+          </ul>
+        </div>
       </div>
+
       <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-5">
-        <div className="text-sm font-bold text-slate-800 mb-2">Active universe limit</div>
-        <input type="number" value={limit} onChange={e=>setLimit(parseInt(e.target.value||'300'))} className="w-40 rounded-xl border border-slate-300 px-4 py-2.5 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-sm font-bold text-slate-800">Active Universe Limit</div>
+            <div className="text-xs text-slate-500 mt-1">Maximum number of stocks to monitor simultaneously</div>
+          </div>
+          <span className={`text-xs font-mono px-2 py-1 rounded ${limit > 300 ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}`}>
+            {limit} / 600 stocks
+          </span>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <input 
+            type="number" 
+            value={limit} 
+            onChange={e=>{
+              const val = parseInt(e.target.value||'300');
+              setLimit(Math.min(600, Math.max(1, val)));
+            }}
+            min="1"
+            max="600"
+            className="w-32 rounded-xl border border-slate-300 px-4 py-2.5 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono" />
+          
+          <div className="flex-1">
+            <input 
+              type="range" 
+              min="1" 
+              max="600" 
+              step="50"
+              value={limit} 
+              onChange={e=>setLimit(parseInt(e.target.value))}
+              className="w-full" />
+            <div className="flex justify-between text-xs text-slate-400 mt-1">
+              <span>1</span>
+              <span>300</span>
+              <span>600 (max)</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 p-3 rounded-lg bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200">
+          <div className="text-xs font-semibold text-slate-800 mb-2">📊 Universe Size Guide:</div>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="p-2 rounded bg-white border border-slate-200">
+              <div className="font-semibold text-green-700">1-100</div>
+              <div className="text-slate-600">Conservative</div>
+            </div>
+            <div className="p-2 rounded bg-white border border-slate-200">
+              <div className="font-semibold text-blue-700">100-300</div>
+              <div className="text-slate-600">Balanced ⭐</div>
+            </div>
+            <div className="p-2 rounded bg-white border border-slate-200">
+              <div className="font-semibold text-amber-700">300-600</div>
+              <div className="text-slate-600">Comprehensive</div>
+            </div>
+          </div>
+          <div className="mt-2 text-xs text-slate-600">
+            <strong>Note:</strong> Higher limits = more opportunities but also more data processing. 
+            Recommended: <strong>300 stocks</strong> for optimal performance.
+          </div>
+        </div>
+
+        <div className="mt-3 p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+          <div className="text-xs text-cyan-900">
+            <strong>🚀 New!</strong> Universe expanded from 300 to <strong>600+ stocks</strong>. 
+            Covers all major sectors: Nifty 50, mid-caps, small-caps, PSU stocks, and more.
+            The ticker will subscribe to this many symbols for live market data.
+          </div>
+        </div>
       </div>
+
       <div className="flex gap-3">
         <button 
           onClick={save} 
-          disabled={saving}
-          className="rounded-xl bg-gradient-primary px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 flex items-center gap-2 transition-all-smooth shadow-card hover-lift">
+          disabled={saving || loading}
+          className="rounded-xl bg-gradient-primary px-6 py-3 text-sm font-bold text-white disabled:opacity-50 flex items-center gap-2 transition-all-smooth shadow-card hover-lift">
           {saving && <Spinner size="sm" />}
-          {saving ? 'Saving...' : 'Save'}
+          {saving ? 'Saving Configuration...' : '💾 Save Configuration'}
         </button>
         <button 
           onClick={load} 
-          disabled={loading}
-          className="rounded-xl bg-white px-4 py-2.5 text-xs font-bold border border-slate-300 text-slate-700 disabled:opacity-50 flex items-center gap-2 transition-all-smooth shadow-sm hover-lift">
+          disabled={loading || saving}
+          className="rounded-xl bg-white px-6 py-3 text-sm font-bold border border-slate-300 text-slate-700 disabled:opacity-50 flex items-center gap-2 transition-all-smooth shadow-sm hover-lift">
           {loading && <Spinner size="sm" />}
-          {loading ? 'Loading...' : 'Reload'}
+          {loading ? 'Loading...' : '🔄 Reload'}
         </button>
+      </div>
+
+      <div className="mt-2 p-4 rounded-xl bg-amber-50 border border-amber-200">
+        <div className="flex items-start gap-2">
+          <svg className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <div className="text-xs text-amber-900">
+            <div className="font-semibold mb-1">⚠️ Important Notes:</div>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Changes take effect on next ticker daemon refresh (usually within 1-2 minutes)</li>
+              <li>Pinned symbols are always loaded first, then the rest up to the limit</li>
+              <li>Universe limit only affects live market data subscriptions (not historical analysis)</li>
+              <li>The <strong>Analyst tab works with ANY stock</strong> regardless of these settings</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   </section>;
