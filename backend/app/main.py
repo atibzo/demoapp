@@ -22,6 +22,7 @@ from .models import APIResponse, Policy, HintIn
 from .kite import get_kite
 from .engine import plan, minute_snapshot
 from . import llm
+from . import contextual_tips
 from .api_v2 import router as api_v2_router
 from .api_v2_hist import router as api_v2_hist_router
 
@@ -301,6 +302,105 @@ def api_hint(body: HintIn):
         log.exception("llm.hint failed metric=%s", body.metric)
         text = ""
     return {"ok": True, "request_id": rid(), "duration_ms": 0, "data": {"hint": text}}
+
+
+# ---------- Contextual Tips & Explanations ----------
+@app.post("/api/contextual/explain-metric")
+def api_explain_metric(
+    metric_name: str = Body(...),
+    value: Any = Body(...),
+    context: Dict[str, Any] = Body(default={}),
+):
+    """Explain what a specific metric means in context"""
+    ok, wait = token_bucket("contextual", 10, 3.0)
+    if not ok:
+        raise HTTPException(status_code=429, detail="rate limited", headers={"Retry-After": str(int(round(wait)))})
+    try:
+        explanation = contextual_tips.explain_metric(metric_name, value, context)
+    except Exception:
+        log.exception("explain_metric failed metric=%s", metric_name)
+        explanation = ""
+    return {"ok": True, "request_id": rid(), "data": {"explanation": explanation}}
+
+
+@app.post("/api/contextual/analyze-context")
+def api_analyze_context(
+    data: Dict[str, Any] = Body(...),
+    data_type: str = Body(default="snapshot"),
+):
+    """Analyze data context and provide insights"""
+    ok, wait = token_bucket("contextual", 8, 4.0)
+    if not ok:
+        raise HTTPException(status_code=429, detail="rate limited", headers={"Retry-After": str(int(round(wait)))})
+    try:
+        insights = contextual_tips.analyze_data_context(data, data_type)
+    except Exception:
+        log.exception("analyze_data_context failed")
+        insights = {"summary": "Analysis unavailable", "key_insights": [], "warnings": [], "tips": []}
+    return {"ok": True, "request_id": rid(), "data": insights}
+
+
+@app.post("/api/contextual/explain-decision")
+def api_explain_decision(analysis: Dict[str, Any] = Body(...)):
+    """Explain why a trading decision was made"""
+    ok, wait = token_bucket("contextual", 10, 3.0)
+    if not ok:
+        raise HTTPException(status_code=429, detail="rate limited", headers={"Retry-After": str(int(round(wait)))})
+    try:
+        explanation = contextual_tips.explain_decision(analysis)
+    except Exception:
+        log.exception("explain_decision failed")
+        explanation = {"why_this_decision": "Analysis in progress"}
+    return {"ok": True, "request_id": rid(), "data": explanation}
+
+
+@app.post("/api/contextual/tips")
+def api_contextual_tips(
+    context_type: str = Body(...),
+    data: Dict[str, Any] = Body(...),
+    user_level: str = Body(default="intermediate"),
+):
+    """Get contextual tips for current view"""
+    ok, wait = token_bucket("contextual", 10, 3.0)
+    if not ok:
+        raise HTTPException(status_code=429, detail="rate limited", headers={"Retry-After": str(int(round(wait)))})
+    try:
+        tips = contextual_tips.get_contextual_tips(context_type, data, user_level)
+    except Exception:
+        log.exception("get_contextual_tips failed")
+        tips = []
+    return {"ok": True, "request_id": rid(), "data": {"tips": tips}}
+
+
+@app.get("/api/contextual/explain-indicator")
+def api_explain_indicator(
+    indicator: str = Query(...),
+    simple: bool = Query(default=False),
+):
+    """Explain what a technical indicator means"""
+    try:
+        explanation = contextual_tips.explain_indicator(indicator, {}, simple)
+    except Exception:
+        log.exception("explain_indicator failed indicator=%s", indicator)
+        explanation = f"Information about {indicator} is currently unavailable."
+    return {"ok": True, "request_id": rid(), "data": {"explanation": explanation}}
+
+
+@app.post("/api/contextual/smart-explain")
+def api_smart_explain(
+    query: str = Body(...),
+    context: Dict[str, Any] = Body(default={}),
+):
+    """Answer any question about the data"""
+    ok, wait = token_bucket("contextual", 8, 4.0)
+    if not ok:
+        raise HTTPException(status_code=429, detail="rate limited", headers={"Retry-After": str(int(round(wait)))})
+    try:
+        answer = contextual_tips.smart_explanation(query, context)
+    except Exception:
+        log.exception("smart_explanation failed")
+        answer = "Unable to answer at this time."
+    return {"ok": True, "request_id": rid(), "data": {"answer": answer}}
 
 
 # ---------- Journal ----------

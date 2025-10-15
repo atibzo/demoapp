@@ -455,35 +455,57 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
         return []
 
 
-def historical_plan(date_yyyy_mm_dd: str, time_hhmm: str = "15:10", top_n: int = 10) -> List[Dict[str,Any]]:
+def historical_plan(date_yyyy_mm_dd: str, time_hhmm: str = "15:10", top_n: int = 10, universe_size: int = 300) -> List[Dict[str,Any]]:
     """
     Generate a plan (top opportunities) for a historical date.
     Fetches data from Kite API if not cached, analyzes them at the given time,
     and returns top_n ranked by score.
+    
+    Now supports up to 300 intraday tradable stocks!
+    
+    Args:
+        date_yyyy_mm_dd: Date in YYYY-MM-DD format
+        time_hhmm: Time in HH:MM format (default 15:10)
+        top_n: Number of top results to return (default 10)
+        universe_size: Number of stocks to scan (default 300, max 300)
     """
+    from .universe import get_intraday_universe
+    import logging
+    log = logging.getLogger(__name__)
+    
     policy = load_policy_v2()
     
     # First check if we have cached symbols
     symbols = get_symbols_for_date(date_yyyy_mm_dd)
     
-    # If no cached symbols, use a default watchlist or universe
+    # If no cached symbols, use the comprehensive intraday universe
     if not symbols:
-        # Get top liquid symbols from policy or use defaults
-        universe = policy.get("universe", {})
-        # For now, use a small set of liquid NSE symbols as default
-        symbols = [
-            "NSE:RELIANCE", "NSE:TCS", "NSE:HDFCBANK", "NSE:INFY", "NSE:ICICIBANK",
-            "NSE:HINDUNILVR", "NSE:ITC", "NSE:SBIN", "NSE:BHARTIARTL", "NSE:KOTAKBANK",
-            "NSE:LT", "NSE:AXISBANK", "NSE:ASIANPAINT", "NSE:MARUTI", "NSE:SUNPHARMA",
-            "NSE:TITAN", "NSE:ULTRACEMCO", "NSE:WIPRO", "NSE:NESTLEIND", "NSE:BAJFINANCE"
-        ]
+        symbols = get_intraday_universe(limit=universe_size, exchange="NSE")
+        log.info(f"Using {len(symbols)} stocks from intraday universe for {date_yyyy_mm_dd}")
     
     rows = []
-    for sym in symbols:
+    fetched_count = 0
+    cache_hit_count = 0
+    
+    log.info(f"Starting analysis of {len(symbols)} symbols for {date_yyyy_mm_dd} at {time_hhmm}")
+    
+    for i, sym in enumerate(symbols):
         # Try to get bars, fetch from Kite if not cached
-        bars = _fetch_and_cache_historical_bars(sym, date_yyyy_mm_dd)
+        cached_bars = get_bars_for_date(sym, date_yyyy_mm_dd)
+        if cached_bars:
+            bars = cached_bars
+            cache_hit_count += 1
+        else:
+            bars = _fetch_and_cache_historical_bars(sym, date_yyyy_mm_dd)
+            if bars:
+                fetched_count += 1
+        
         if not bars:
             continue
+        
+        # Log progress every 50 stocks
+        if (i + 1) % 50 == 0:
+            log.info(f"Progress: {i+1}/{len(symbols)} - Found {len(rows)} opportunities so far")
         
         # Slice bars up to the specified time
         upto = _slice_upto_hhmm(bars, time_hhmm)
@@ -517,4 +539,8 @@ def historical_plan(date_yyyy_mm_dd: str, time_hhmm: str = "15:10", top_n: int =
     
     # Sort by score descending
     rows.sort(key=lambda x: x["score"], reverse=True)
+    
+    log.info(f"Historical plan complete: scanned={len(symbols)}, cache_hits={cache_hit_count}, "
+             f"fetched={fetched_count}, opportunities={len(rows)}, returning_top={min(top_n, len(rows))}")
+    
     return rows[:top_n]
