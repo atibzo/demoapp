@@ -286,12 +286,6 @@ function TopAlgos({session}:{session:Session|null}) {
   const defaultLabel='Post-11';
   console.log('📊 TopAlgos initial state - dataMode:', dataMode, 'historicalDate:', historicalDate);
 
-  useEffect(()=>{
-    const onStorage = (e: StorageEvent) => { if (e.key==='policy_rev_hint') refresh(); };
-    window.addEventListener('storage', onStorage);
-    return ()=>window.removeEventListener('storage', onStorage);
-  },[]);
-
   async function saveTodDefault(v:any){
     try{
       const p = await loadPolicy();
@@ -307,35 +301,43 @@ function TopAlgos({session}:{session:Session|null}) {
     }catch{ alert('Failed to save default'); }
   }
 
-  async function refresh(){
+  const refresh = React.useCallback(async () => {
     try{
       setLoading(true); setError(null);
-      console.log('TopAlgos refresh - dataMode:', dataMode, 'historicalDate:', historicalDate);
+      console.log('🔄 TopAlgos refresh - dataMode:', dataMode, 'historicalDate:', historicalDate);
       let arr: any[];
       if (dataMode === 'HISTORICAL' && historicalDate) {
         // Fetch historical data for specific date
         const r = await fetch(`${API}/api/v2/hist/plan?date=${historicalDate}&top=10`, { cache: 'no-store' });
-        console.log('Historical fetch response:', r.status, r.ok);
+        console.log('📊 Historical fetch response:', r.status, r.ok);
         if (r.ok) {
           const data = await r.json();
           arr = data.items || [];
-          console.log('Historical data received:', arr?.length, 'rows');
+          console.log('📊 Historical data received:', arr?.length, 'rows');
           if (!Array.isArray(arr)) arr = [];
         } else {
-          throw new Error('Failed to fetch historical data');
+          const errorText = await r.text();
+          console.error('❌ Historical fetch failed:', r.status, errorText);
+          throw new Error(`Failed to fetch historical data: ${r.status} ${errorText}`);
         }
       } else {
         // Fetch live/current data
         arr = await fetchPlanRows();
-        console.log('Live data received:', arr?.length, 'rows');
+        console.log('📊 Live data received:', arr?.length, 'rows');
       }
-      console.log('Setting rows:', arr);
+      console.log('✅ Setting rows:', arr);
       setRows(arr);
     }catch(e:any){
-      console.error('Refresh error:', e);
+      console.error('❌ Refresh error:', e);
       setError(e?.message||'Load error');
     }finally{ setLoading(false); }
-  }
+  }, [dataMode, historicalDate]);
+
+  useEffect(()=>{
+    const onStorage = (e: StorageEvent) => { if (e.key==='policy_rev_hint') refresh(); };
+    window.addEventListener('storage', onStorage);
+    return ()=>window.removeEventListener('storage', onStorage);
+  },[refresh]);
 
   useEffect(()=>{ 
     if (dataMode === 'LIVE') {
@@ -343,8 +345,15 @@ function TopAlgos({session}:{session:Session|null}) {
       const id=setInterval(refresh, session?.mode === 'LIVE' ? 8000 : 15000); // Slower polling when not live
       return ()=>clearInterval(id);
     }
-    // Don't auto-refresh for historical mode
-  },[session?.mode, dataMode]);
+  },[dataMode, refresh, session?.mode]);
+
+  // Trigger fetch when historical date changes
+  useEffect(() => {
+    if (dataMode === 'HISTORICAL' && historicalDate) {
+      console.log('🔄 Historical date changed, fetching data for:', historicalDate);
+      refresh();
+    }
+  }, [historicalDate, dataMode, refresh]);
 
   return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
     {/* DEBUG INFO - REMOVE LATER */}
@@ -361,11 +370,7 @@ function TopAlgos({session}:{session:Session|null}) {
       <div className="flex items-center gap-3">
         <ToDControl value={tod} onChange={setTod} onSaveDefault={saveTodDefault} defaultLabel={defaultLabel} />
         <button 
-          onClick={() => {
-            alert(`🔍 Button clicked!\ndataMode: ${dataMode}\ndate: ${historicalDate}\ndisabled: ${loading || (dataMode === 'HISTORICAL' && !historicalDate)}`);
-            console.log('Run Scan clicked - dataMode:', dataMode, 'date:', historicalDate);
-            refresh();
-          }} 
+          onClick={refresh} 
           disabled={loading || (dataMode === 'HISTORICAL' && !historicalDate)} 
           className="rounded-xl bg-gradient-primary px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all-smooth shadow-card hover-lift">
           {loading && <Spinner size="sm" />}

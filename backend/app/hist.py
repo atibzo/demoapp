@@ -374,21 +374,114 @@ def get_symbols_for_date(date_yyyy_mm_dd: str) -> List[str]:
             symbols.append(parts[1])
     return sorted(set(symbols))
 
+def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[Dict[str, Any]]:
+    """
+    Fetch historical bars from Kite API and cache in Redis.
+    Returns the bars or [] if fetch fails.
+    """
+    try:
+        from .kite import get_kite
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo
+        
+        # Check if we already have the data cached
+        cached = get_bars_for_date(symbol, date_yyyy_mm_dd)
+        if cached:
+            return cached
+        
+        # Extract exchange and tradingsymbol
+        if ":" in symbol:
+            exchange, tradingsymbol = symbol.split(":", 1)
+        else:
+            exchange, tradingsymbol = "NSE", symbol
+        
+        # Get instrument token
+        ks = get_kite().kite
+        if not ks:
+            return []
+        
+        # Find instrument token
+        token = None
+        try:
+            instruments = ks.instruments(exchange)
+            for inst in instruments:
+                if inst.get("tradingsymbol", "").upper() == tradingsymbol.upper():
+                    token = inst.get("instrument_token")
+                    break
+        except Exception as e:
+            print(f"Failed to get instrument token for {symbol}: {e}")
+            return []
+        
+        if not token:
+            return []
+        
+        # Fetch historical data from Kite
+        ist = ZoneInfo("Asia/Kolkata")
+        start_ist = _dt.fromisoformat(f"{date_yyyy_mm_dd}T09:15:00").replace(tzinfo=ist)
+        end_ist = _dt.fromisoformat(f"{date_yyyy_mm_dd}T15:30:00").replace(tzinfo=ist)
+        
+        data = ks.historical_data(
+            instrument_token=token,
+            from_date=start_ist,
+            to_date=end_ist,
+            interval="minute",
+            continuous=False,
+            oi=False,
+        )
+        
+        if not data:
+            return []
+        
+        # Convert Kite format to our format
+        bars = []
+        for candle in data:
+            # Kite returns: [timestamp, open, high, low, close, volume, oi]
+            bars.append({
+                "ts": candle["date"].isoformat() if hasattr(candle["date"], "isoformat") else str(candle["date"]),
+                "o": float(candle["open"]),
+                "h": float(candle["high"]),
+                "l": float(candle["low"]),
+                "c": float(candle["close"]),
+                "v": int(candle["volume"])
+            })
+        
+        # Cache the bars in Redis
+        if bars:
+            write_bars_for_date(symbol, date_yyyy_mm_dd, bars)
+        
+        return bars
+    except Exception as e:
+        print(f"Failed to fetch historical bars for {symbol} on {date_yyyy_mm_dd}: {e}")
+        return []
+
+
 def historical_plan(date_yyyy_mm_dd: str, time_hhmm: str = "15:10", top_n: int = 10) -> List[Dict[str,Any]]:
     """
     Generate a plan (top opportunities) for a historical date.
-    Scans all symbols with bars for that date, analyzes them at the given time,
+    Fetches data from Kite API if not cached, analyzes them at the given time,
     and returns top_n ranked by score.
     """
     policy = load_policy_v2()
+    
+    # First check if we have cached symbols
     symbols = get_symbols_for_date(date_yyyy_mm_dd)
     
+    # If no cached symbols, use a default watchlist or universe
     if not symbols:
-        return []
+        # Get top liquid symbols from policy or use defaults
+        universe = policy.get("universe", {})
+        # For now, use a small set of liquid NSE symbols as default
+        symbols = [
+            "NSE:RELIANCE", "NSE:TCS", "NSE:HDFCBANK", "NSE:INFY", "NSE:ICICIBANK",
+            "NSE:HINDUNILVR", "NSE:ITC", "NSE:SBIN", "NSE:BHARTIARTL", "NSE:KOTAKBANK",
+            "NSE:LT", "NSE:AXISBANK", "NSE:ASIANPAINT", "NSE:MARUTI", "NSE:SUNPHARMA",
+            "NSE:TITAN", "NSE:ULTRACEMCO", "NSE:WIPRO", "NSE:NESTLEIND", "NSE:BAJFINANCE"
+        ]
     
     rows = []
     for sym in symbols:
-        bars = get_bars_for_date(sym, date_yyyy_mm_dd)
+        # Try to get bars, fetch from Kite if not cached
+        bars = _fetch_and_cache_historical_bars(sym, date_yyyy_mm_dd)
         if not bars:
             continue
         
