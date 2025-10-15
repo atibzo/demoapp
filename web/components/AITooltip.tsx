@@ -276,5 +276,83 @@ export const TOOLTIP_CONTENT: Record<string, AITooltipContent> = {
       aggressive: 1.2
     },
     relatedSettings: ['Stop Loss Multiplier', 'Take Profit Targets']
+  },
+
+  // ===== VOLUME CONFIGURATION =====
+  
+  volume_weight: {
+    setting: 'volume_weight',
+    title: 'Volume Weight (Scoring)',
+    simpleExplanation: 'How much importance to give to volume in the scoring algorithm. Volume confirms price movements and indicates institutional participation.',
+    technicalDetails: 'Scoring weight for volume factor. Calculated as current 1-min volume vs median volume, capped at 1.2x. Higher weights favor high-volume breakouts and ignore low-volume noise.',
+    impact: 'high',
+    examples: {
+      low: { value: 0.3, outcome: 'Volume less important, more signals (including low-volume)' },
+      medium: { value: 0.6, outcome: 'Balanced approach, filters some low-volume setups' },
+      high: { value: 1.2, outcome: 'Only high-volume confirmations, institutional-grade signals' }
+    },
+    recommendations: {
+      conservative: 1.0,
+      balanced: 0.6,
+      aggressive: 0.4
+    },
+    relatedSettings: ['Min Volume Multiple', 'Breakout Weight', 'Trend Weight']
+  },
+
+  min_volume_multiple: {
+    setting: 'min_volume_multiple',
+    title: 'Minimum Volume Multiple (VolX)',
+    simpleExplanation: 'Required volume spike vs normal. 1.4 means current volume must be 40% higher than median. Filters out low-liquidity moves.',
+    technicalDetails: 'Threshold for volume filter. Compares current 1-minute bar volume to rolling median 1-minute volume. Acts as hard cutoff - signals below this are rejected regardless of other factors. Critical for avoiding illiquid stocks.',
+    impact: 'high',
+    examples: {
+      low: { value: 1.0, outcome: 'No volume filter, accept all volume levels (risky!)' },
+      medium: { value: 1.4, outcome: 'Require 40% volume spike, standard filtering' },
+      high: { value: 2.0, outcome: 'Require 100% volume spike (2x), very selective' }
+    },
+    recommendations: {
+      conservative: 1.8,
+      balanced: 1.4,
+      aggressive: 1.1
+    },
+    relatedSettings: ['Volume Weight', 'Liquidity Filters', 'Universe Size']
+  },
+
+  volume_confirmation: {
+    setting: 'volume_confirmation',
+    title: 'Volume Confirmation Strategy',
+    simpleExplanation: 'How to use volume in trade decisions. Volume should confirm price movements - high volume on breakouts good, high volume on pullbacks questionable.',
+    technicalDetails: 'Strategy for incorporating volume into signal generation. Options: (1) Volume-weighted scoring, (2) Hard threshold filter, (3) Dynamic adjustment based on stock characteristics.',
+    impact: 'medium',
+    examples: {
+      low: { value: 'none', outcome: 'Ignore volume completely (not recommended for intraday)' },
+      medium: { value: 'filter', outcome: 'Use as threshold filter (standard approach)' },
+      high: { value: 'weighted', outcome: 'Full integration in scoring (sophisticated)' }
+    },
+    recommendations: {
+      conservative: 'weighted',
+      balanced: 'filter',
+      aggressive: 'filter'
+    },
+    relatedSettings: ['Min Volume Multiple', 'Volume Weight']
+  },
+
+  institutional_volume: {
+    setting: 'institutional_volume',
+    title: 'Institutional Volume Detection',
+    simpleExplanation: 'Detect when big players (institutions, funds) are active. They move markets with large orders. Following institutional money improves success.',
+    technicalDetails: 'Identifies unusually large volume spikes (>3x median) combined with tight spreads, indicating institutional participation. These moves tend to persist as institutions accumulate/distribute positions.',
+    impact: 'medium',
+    examples: {
+      low: { value: 2.0, outcome: '2x spike = institutional, more signals' },
+      medium: { value: 3.0, outcome: '3x spike = institutional, standard threshold' },
+      high: { value: 4.0, outcome: '4x spike = institutional, very selective' }
+    },
+    recommendations: {
+      conservative: 3.5,
+      balanced: 3.0,
+      aggressive: 2.5
+    },
+    relatedSettings: ['Min Volume Multiple', 'Volume Weight']
   }
 };
