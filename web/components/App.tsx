@@ -317,7 +317,8 @@ function TopAlgos({session}:{session:Session|null}) {
         const r = await fetch(`${API}/api/v2/hist/plan?date=${historicalDate}&top=10`, { cache: 'no-store' });
         console.log('Historical fetch response:', r.status, r.ok);
         if (r.ok) {
-          arr = await r.json();
+          const data = await r.json();
+          arr = data.items || [];
           console.log('Historical data received:', arr?.length, 'rows');
           if (!Array.isArray(arr)) arr = [];
         } else {
