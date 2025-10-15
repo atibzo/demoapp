@@ -552,7 +552,8 @@ function Journal(){
   async function refresh(){ 
     try{ 
       setLoading(true);
-      setRows(await j(await fetch(`${API}/api/journal`))); 
+      const response = await j(await fetch(`${API}/api/journal`));
+      setRows(response.data || []); 
     }catch{ 
       setRows([]);
     }finally{
