@@ -46,31 +46,77 @@ export default function AnalystClient(){
   const [loadingDay, setLoadingDay] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [loadingWhatif, setLoadingWhatif] = useState(false);
+  const [error, setError] = useState<string|null>(null);
+  const [liveData, setLiveData] = useState<any>(null);
 
   const curBar = bars[ix];
-
-  // Auto-load if date is provided in URL
-  useEffect(() => {
-    if (date0 && sym0 && bars.length === 0) {
-      loadDay();
-    }
-  }, []);
 
   async function loadDay(){
     if(!symbol || !date) return;
     try{
       setLoadingDay(true);
+      setError(null);
       const r = await fetch(`${API}/api/v2/hist/bars?symbol=${encodeURIComponent(symbol)}&date=${date}`, { cache: 'no-store' });
-      if(!r.ok){ alert('No recorded bars for this date. Make sure ticker persisted minute bars.'); setBars([]); return; }
+      if(!r.ok){ 
+        setError('No recorded bars for this date. Make sure ticker persisted minute bars.'); 
+        setBars([]); 
+        return; 
+      }
       const x = await r.json();
       const b:Bar[] = (x.bars||[]).map((z:any)=>({ ts:z.ts, o:+z.o, h:+z.h, l:+z.l, c:+z.c, v:+z.v }));
+      if (b.length === 0) {
+        setError('No bars found for this symbol and date.');
+        setBars([]);
+        return;
+      }
       setBars(b);
       const mid = Math.min(Math.floor(b.length*0.5), Math.max(0,b.length-1));
       setIx(mid);
+      setError(null);
+    } catch(e: any) {
+      setError(e?.message || 'Failed to load historical data');
+      setBars([]);
     } finally {
       setLoadingDay(false);
     }
   }
+
+  async function loadLive(){
+    if(!symbol) return;
+    try{
+      setLoadingAnalysis(true);
+      setError(null);
+      const r = await fetch(`${API}/api/v2/analyze?symbol=${encodeURIComponent(symbol)}`, { cache: 'no-store' });
+      if(!r.ok){ 
+        setError('Failed to fetch live analysis'); 
+        setLiveData(null);
+        return; 
+      }
+      const data = await r.json();
+      setLiveData(data);
+      setAz(data);
+    } catch(e: any) {
+      setError(e?.message || 'Failed to load live data');
+    } finally {
+      setLoadingAnalysis(false);
+    }
+  }
+
+  // Auto-load if date is provided in URL
+  useEffect(() => {
+    if (date0 && sym0) {
+      loadDay();
+    }
+  }, []);
+
+  // Auto-refresh for live mode
+  useEffect(() => {
+    if (mode === 'LIVE') {
+      loadLive();
+      const interval = setInterval(loadLive, 10000); // Refresh every 10s
+      return () => clearInterval(interval);
+    }
+  }, [mode, symbol]);
 
   useEffect(()=>{ (async ()=>{
     if(mode!=='HIST' || bars.length===0) return;
@@ -173,28 +219,69 @@ export default function AnalystClient(){
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <input value={symbol} onChange={e=>setSymbol(e.target.value)} className="rounded-xl border border-zinc-300 px-3 py-2 text-sm w-56" />
+        <input 
+          value={symbol} 
+          onChange={e=>setSymbol(e.target.value)} 
+          placeholder="Enter symbol (e.g., NSE:INFY)"
+          className="rounded-xl border border-zinc-300 px-3 py-2 text-sm w-56 focus:ring-2 focus:ring-zinc-900 focus:border-transparent" />
         <div className="flex items-center gap-2 text-sm">
-          <label className="inline-flex items-center gap-1">
-            <input type="radio" checked={mode==='LIVE'} onChange={()=>setMode('LIVE')} /><span>Live</span>
+          <label className="inline-flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" checked={mode==='LIVE'} onChange={()=>{setMode('LIVE'); setBars([]); setAz(null);}} className="cursor-pointer" />
+            <span>Live</span>
           </label>
-          <label className="inline-flex items-center gap-1">
-            <input type="radio" checked={mode==='HIST'} onChange={()=>setMode('HIST')} /><span>Historical</span>
+          <label className="inline-flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" checked={mode==='HIST'} onChange={()=>{setMode('HIST'); setLiveData(null);}} className="cursor-pointer" />
+            <span>Historical</span>
           </label>
         </div>
         {mode==='HIST' && (
           <>
-            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="rounded-xl border border-zinc-300 px-3 py-2 text-sm" />
+            <input 
+              type="date" 
+              value={date} 
+              onChange={e=>setDate(e.target.value)}
+              max={new Date().toISOString().split('T')[0]}
+              className="rounded-xl border border-zinc-300 px-3 py-2 text-sm focus:ring-2 focus:ring-zinc-900 focus:border-transparent" />
             <button 
               onClick={loadDay} 
               disabled={!date||loadingDay} 
-              className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-2 transition-all hover:bg-zinc-800">
+              className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all hover:bg-zinc-800">
               {loadingDay && <Spinner size="sm" />}
               {loadingDay ? 'Loading...' : 'Load Day'}
             </button>
           </>
         )}
+        {mode==='LIVE' && (
+          <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <circle cx="10" cy="10" r="10" className="text-emerald-500 animate-pulse"/>
+            </svg>
+            <span>Auto-refreshing every 10s</span>
+          </div>
+        )}
       </div>
+
+      {error && (
+        <div className="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <span>{error}</span>
+          </div>
+        </div>
+      )}
+
+      {mode==='HIST' && !date && !bars.length && (
+        <div className="mt-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 text-sm animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <span>Select a date and click "Load Day" to analyze historical data</span>
+          </div>
+        </div>
+      )}
 
       {mode==='HIST' && bars.length>0 && (
         <div className="mt-3 rounded-xl border border-zinc-200 p-3">
@@ -209,8 +296,50 @@ export default function AnalystClient(){
         </div>
       )}
 
+      {(mode === 'HIST' && bars.length > 0) || (mode === 'LIVE' && az) ? (
       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_360px]">
-        <div>{svg}</div>
+        <div>
+          {mode === 'HIST' && svg}
+          {mode === 'LIVE' && (
+            <div className="rounded-xl border border-zinc-200 bg-white p-8 text-center">
+              <div className="flex flex-col items-center gap-3">
+                <svg className="w-16 h-16 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <div className="text-sm text-zinc-600">Live chart coming soon</div>
+                <div className="text-xs text-zinc-400">Currently showing analysis data only</div>
+              </div>
+            </div>
+          )}
+          {mode === 'HIST' && (
+            <div className="mt-2 flex items-center gap-4 text-xs text-zinc-600">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-0.5 bg-sky-500"></div>
+                <span>EMA 9</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-0.5 bg-indigo-500"></div>
+                <span>EMA 21</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-0.5 bg-amber-500"></div>
+                <span>VWAP</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-0.5 bg-zinc-900 border-dashed border-t-2"></div>
+                <span>Trigger</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-0.5 bg-red-600"></div>
+                <span>Stop</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-0.5 bg-emerald-600"></div>
+                <span>TP1/TP2</span>
+              </div>
+            </div>
+          )}
+        </div>
         <div className="space-y-3">
           <div className="rounded-xl border border-zinc-200 p-3 relative">
             {loadingAnalysis && (
@@ -224,9 +353,9 @@ export default function AnalystClient(){
               <div className="text-xs text-zinc-500">conf {az?.confidence ?? '—'}</div>
             </div>
             <div className="mt-1 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded bg-zinc-50 p-2">ΔTrigger {az? `${az.risk.delta_trigger_bps} bps` : '—'}</div>
-              <div className="rounded bg-zinc-50 p-2">R:R {az? az.risk.rr : '—'}</div>
-              <div className="rounded bg-zinc-50 p-2">ATR {az? az.risk.atr : '—'}</div>
+              <div className="rounded bg-zinc-50 p-2">ΔTrigger {az? `${Number(az.risk.delta_trigger_bps).toFixed(0)} bps` : '—'}</div>
+              <div className="rounded bg-zinc-50 p-2">R:R {az? Number(az.risk.rr).toFixed(2) : '—'}</div>
+              <div className="rounded bg-zinc-50 p-2">ATR {az? Number(az.risk.atr).toFixed(2) : '—'}</div>
               <div className="rounded bg-zinc-50 p-2">Regime {az?.meta?.regime ?? '—'}</div>
             </div>
           </div>
@@ -271,12 +400,7 @@ export default function AnalystClient(){
           </div>
         </div>
       </div>
-
-      {mode==='HIST' && !bars.length && date && !loadingDay && (
-        <div className="mt-4 text-sm text-zinc-600">
-          No bars recorded for {symbol} on {date}. Ensure the ticker wrote minute bars (see backend patch).
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }
