@@ -346,6 +346,14 @@ function TopAlgos({session}:{session:Session|null}) {
     // Don't auto-refresh for historical mode
   },[session?.mode, dataMode]);
 
+  // Trigger fetch when historical date changes
+  useEffect(() => {
+    if (dataMode === 'HISTORICAL' && historicalDate) {
+      console.log('🔄 Historical date changed, fetching data for:', historicalDate);
+      refresh();
+    }
+  }, [historicalDate, dataMode]);
+
   return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
     {/* DEBUG INFO - REMOVE LATER */}
     <div className="mb-4 rounded-xl bg-yellow-100 border-2 border-yellow-500 p-3 text-xs font-mono">
