@@ -283,6 +283,9 @@ function TopAlgos({session}:{session:Session|null}) {
   const [tod,setTod]=useState<{kind:'post11'|'allday'|'custom'; start?:string; end?:string}>({kind:'post11'});
   const [dataMode,setDataMode]=useState<'LIVE'|'HISTORICAL'>('LIVE');
   const [historicalDate,setHistoricalDate]=useState<string>('');
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState(0);
+  const refreshInProgressRef = useRef(false);
   const defaultLabel='Post-11';
   console.log('📊 TopAlgos initial state - dataMode:', dataMode, 'historicalDate:', historicalDate);
 
@@ -302,7 +305,21 @@ function TopAlgos({session}:{session:Session|null}) {
   }
 
   const refresh = React.useCallback(async () => {
+    // Prevent overlapping requests
+    if (refreshInProgressRef.current) {
+      console.log('⏭️ Skipping refresh - already in progress');
+      return;
+    }
+    
+    // Debounce: don't refresh if last refresh was less than 2 seconds ago
+    const now = Date.now();
+    if (now - lastRefreshTime < 2000) {
+      console.log('⏭️ Skipping refresh - too soon after last refresh');
+      return;
+    }
+    
     try{
+      refreshInProgressRef.current = true;
       setLoading(true); setError(null);
       console.log('🔄 TopAlgos refresh - dataMode:', dataMode, 'historicalDate:', historicalDate);
       let arr: any[];
@@ -327,11 +344,16 @@ function TopAlgos({session}:{session:Session|null}) {
       }
       console.log('✅ Setting rows:', arr);
       setRows(arr);
+      setInitialLoadDone(true);
+      setLastRefreshTime(Date.now());
     }catch(e:any){
       console.error('❌ Refresh error:', e);
       setError(e?.message||'Load error');
-    }finally{ setLoading(false); }
-  }, [dataMode, historicalDate]);
+    }finally{ 
+      setLoading(false);
+      refreshInProgressRef.current = false;
+    }
+  }, [dataMode, historicalDate, lastRefreshTime]);
 
   useEffect(()=>{
     const onStorage = (e: StorageEvent) => { if (e.key==='policy_rev_hint') refresh(); };
@@ -341,19 +363,39 @@ function TopAlgos({session}:{session:Session|null}) {
 
   useEffect(()=>{ 
     if (dataMode === 'LIVE') {
-      refresh(); 
-      const id=setInterval(refresh, session?.mode === 'LIVE' ? 8000 : 15000); // Slower polling when not live
-      return ()=>clearInterval(id);
+      // Initial refresh
+      refresh();
+      
+      // Only set up interval after initial load is done
+      let intervalId: NodeJS.Timeout | null = null;
+      
+      // Wait for initial load to complete before starting interval
+      if (initialLoadDone) {
+        const refreshInterval = session?.mode === 'LIVE' ? 10000 : 20000; // Slower polling when not live
+        intervalId = setInterval(refresh, refreshInterval);
+        console.log(`⏰ Auto-refresh interval set to ${refreshInterval}ms`);
+      }
+      
+      return () => {
+        if (intervalId) {
+          clearInterval(intervalId);
+          console.log('⏸️ Cleared auto-refresh interval');
+        }
+      };
     }
-  },[dataMode, refresh, session?.mode]);
+  },[dataMode, refresh, session?.mode, initialLoadDone]);
 
-  // Trigger fetch when historical date changes
+  // Trigger fetch when historical date changes (with debounce)
   useEffect(() => {
     if (dataMode === 'HISTORICAL' && historicalDate) {
       console.log('🔄 Historical date changed, fetching data for:', historicalDate);
-      refresh();
+      const timeoutId = setTimeout(() => {
+        refresh();
+      }, 300); // 300ms debounce
+      
+      return () => clearTimeout(timeoutId);
     }
-  }, [historicalDate, dataMode, refresh]);
+  }, [historicalDate, dataMode]);
 
   return <section className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
     {/* DEBUG INFO - REMOVE LATER */}
