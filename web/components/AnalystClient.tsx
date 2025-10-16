@@ -475,21 +475,21 @@ export default function AnalystClient(){
                   <span>ΔTrigger</span>
                   <IndicatorInfo indicator="Delta Trigger (BPS)" simple={true} />
                 </div>
-                <div className="text-sm font-bold text-slate-800 mt-1">{az?.risk?.delta_trigger_bps != null ? `${Number(az.risk.delta_trigger_bps).toFixed(0)} bps` : '—'}</div>
+                <div className="text-sm font-bold text-slate-800 mt-1">{az?.risk?.delta_trigger_bps != null ? `${Number(az?.risk?.delta_trigger_bps).toFixed(0)} bps` : '—'}</div>
               </div>
               <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
                 <div className="flex items-center gap-1 text-slate-500 font-medium">
                   <span>R:R</span>
                   <IndicatorInfo indicator="Risk:Reward Ratio" simple={true} />
                 </div>
-                <div className="text-sm font-bold text-slate-800 mt-1">{az?.risk?.rr != null ? Number(az.risk.rr).toFixed(2) : '—'}</div>
+                <div className="text-sm font-bold text-slate-800 mt-1">{az?.risk?.rr != null ? Number(az?.risk?.rr).toFixed(2) : '—'}</div>
               </div>
               <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
                 <div className="flex items-center gap-1 text-slate-500 font-medium">
                   <span>ATR</span>
                   <IndicatorInfo indicator="ATR" simple={true} />
                 </div>
-                <div className="text-sm font-bold text-slate-800 mt-1">{az?.risk?.atr != null ? Number(az.risk.atr).toFixed(2) : '—'}</div>
+                <div className="text-sm font-bold text-slate-800 mt-1">{az?.risk?.atr != null ? Number(az?.risk?.atr).toFixed(2) : '—'}</div>
               </div>
               <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
                 <div className="text-slate-500 font-medium">Regime</div>
