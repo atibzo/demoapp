@@ -169,7 +169,7 @@ export default function AnalystClient(){
   })(); }, [mode, symbol, date, ix, bars.length]);
 
   useEffect(()=>{ (async()=>{
-    if(!az) { setWhatif(null); return; }
+    if(!az || !az.action || !az.action.entry_range) { setWhatif(null); return; }
     try {
       setLoadingWhatif(true);
       const entry = az.action.entry_range[1];
@@ -502,9 +502,9 @@ export default function AnalystClient(){
             <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Trade Bracket</div>
             <div className="mt-1 text-sm grid gap-1">
               <div>Trigger: <span className="font-mono">{fmt(az?.action?.trigger)}</span></div>
-              <div>Entry:   <span className="font-mono">{az? `${fmt(az.action.entry_range[0])} – ${fmt(az.action.entry_range[1])}`:'—'}</span></div>
+              <div>Entry:   <span className="font-mono">{az?.action?.entry_range? `${fmt(az.action.entry_range[0])} – ${fmt(az.action.entry_range[1])}`:'—'}</span></div>
               <div>Stop:    <span className="font-mono">{fmt(az?.action?.stop)}</span></div>
-              <div>TP1/TP2: <span className="font-mono">{az? `${fmt(az.action.tp1)} / ${fmt(az.action.tp2)}`:'—'}</span></div>
+              <div>TP1/TP2: <span className="font-mono">{az?.action?.tp1 && az?.action?.tp2? `${fmt(az.action.tp1)} / ${fmt(az.action.tp2)}`:'—'}</span></div>
               <div className="text-[11px] text-zinc-500">Invalid: {az?.action?.invalid_if || '—'}</div>
             </div>
           </div>
