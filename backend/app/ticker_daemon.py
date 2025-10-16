@@ -170,20 +170,27 @@ class MinuteIndicators:
         volx = (last.v / baseline) if baseline > 0 else 0.0
 
         return {
+            "price": round(last.c, 2),
+            "last_price": round(last.c, 2),
+            "last_close": round(last.c, 2),
+            "vwap": round(vwap60, 2),
             "vwap_delta_pct": round(vwap_delta_pct, 2),
             "minute_vol_multiple": round(volx, 2),
+            "vol_mult": round(volx, 2),
             "ema9": round(ema9, 2),
             "ema21": round(ema21, 2),
             "rsi14": round(rsi, 1),
             "bb_middle": round(bb_mid, 2),
             "bb_upper": round(bb_up, 2),
             "bb_lower": round(bb_lo, 2),
+            "atr": round(atr, 2),
             "atr14": round(atr, 2),
             "donchian_hi": round(d_hi, 2),
+            "donchian_upper": round(d_hi, 2),
             "donchian_lo": round(d_lo, 2),
+            "donchian_lower": round(d_lo, 2),
             "orb_high": None if orb_hi is None else round(orb_hi, 2),
             "orb_low":  None if orb_lo is None else round(orb_lo, 2),
-            "last_close":  round(last.c, 2),
             "last_volume": round(last.v, 2),
         }
 
@@ -430,6 +437,7 @@ class TickerDaemon:
                     pass
 
         self.r.set("ticker:alive", now)
+        self.r.set("ticker:heartbeat", now_ms())  # Also update heartbeat for session_status
         for tk in ticks:
             token = tk.get("instrument_token")
             lp    = tk.get("last_price")

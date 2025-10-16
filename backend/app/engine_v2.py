@@ -81,23 +81,30 @@ def _trigger(side, ema9, don_l, don_u):
     return min(c) if c else None
 
 def _factors(s: Dict, pol: Dict) -> Dict[str, float]:
-    price, atr, ema9, ema21, vwap = s.get("price") or s.get("last_price"), s.get("atr"), s.get("ema9"), s.get("ema21"), s.get("vwap")
+    price = s.get("price") or s.get("last_price") or s.get("last_close") or 0
+    atr = s.get("atr") or s.get("atr14") or 1.0
+    ema9 = s.get("ema9") or 0
+    ema21 = s.get("ema21") or 0
+    vwap = s.get("vwap") or price
+    
     def squash(x, lo, hi):
         try:
             x = max(lo, min(hi, x)); return (x - lo) / (hi - lo)
         except: return 0.0
+    
     trend = squash(((ema9 or 0)-(ema21 or 0))/max(1e-6, (atr or 1.0)), -1.0, 1.0)
     pull  = math.exp(-((abs((price or 0)-(ema9 or 0))/max(1e-6,(atr or 1.0))))**2)
     vwd   = abs((price or 0)-(vwap or 0))/max(1e-6,(atr or 1.0))
     vwap_align = 1.0 - squash(vwd, 0.0, 2.0)
-    don_l, don_u = s.get("donch_lo") or s.get("donchian_lower"), s.get("donch_hi") or s.get("donchian_upper")
+    don_l = s.get("donch_lo") or s.get("donchian_lower") or s.get("donchian_lo") or price
+    don_u = s.get("donch_hi") or s.get("donchian_upper") or s.get("donchian_hi") or price
     side = _side(ema9, ema21)
     if side == "long":
         prox = 1.0 - squash(abs((don_u or 0)-(price or 0))/max(1e-6,(atr or 1.0)), 0.0, 2.0)
     else:
         prox = 1.0 - squash(abs((price or 0)-(don_l or 0))/max(1e-6,(atr or 1.0)), 0.0, 2.0)
     breakout = max(0.0, prox)
-    volx = s.get("vol_mult") or 1.0
+    volx = s.get("vol_mult") or s.get("minute_vol_multiple") or 1.0
     volume = squash(volx, 0.5, 2.0)
     return {"trend":float(trend),"pullback":float(pull),"vwap":float(vwap_align),"breakout":float(breakout),"volume":float(volume)}
 
@@ -184,9 +191,9 @@ def analyze(symbol: str) -> Dict:
     sym = symbol.replace(" ", "").upper()
     s = read_snap(sym)
     if not s:
-        return {"decision":"WAIT","score":0.0,"confidence":0.0,"bands":[1.0, 1.0],"action":{},"why":{"trend":0,"pullback":0,"vwap":0,"breakout":0,"volume":0,"checks":{}},"meta":{"age_s":None,"regime":"Normal","liquidity_ok":False}}
-    price, atr, ema9, ema21, vwap = s.get("price") or s.get("last_price"), s.get("atr"), s.get("ema9"), s.get("ema21"), s.get("vwap")
-    don_l, don_u = s.get("donch_lo") or s.get("donchian_lower"), s.get("donch_hi") or s.get("donchian_upper")
+        return {"decision":"WAIT","score":0.0,"confidence":0.0,"bands":[1.0, 1.0],"action":{},"risk":{"atr":0.0,"rr":0.0,"delta_trigger_bps":0.0},"why":{"trend":0,"pullback":0,"vwap":0,"breakout":0,"volume":0,"checks":{}},"meta":{"age_s":None,"regime":"Normal","liquidity_ok":False}}
+    price, atr, ema9, ema21, vwap = s.get("price") or s.get("last_price"), s.get("atr") or s.get("atr14"), s.get("ema9"), s.get("ema21"), s.get("vwap")
+    don_l, don_u = s.get("donch_lo") or s.get("donchian_lower") or s.get("donchian_lo"), s.get("donch_hi") or s.get("donchian_upper") or s.get("donchian_hi")
     side = _side(ema9, ema21); regime = _regime(atr, price)
     factors = _factors(s, pol)
     fresh_ok = s["_age_s"] <= int(pol.get("staleness_s", 10))
@@ -199,18 +206,34 @@ def analyze(symbol: str) -> Dict:
     tp2_atr = float(b.get("tp2_atr", 1.5)); stop_off = float(b.get("stop_vwap_offset_atr", 0.5))
     trig = _trigger(side, ema9, don_l, don_u)
     action = {}
+    delta_trigger_bps = 0.0
     if trig is not None and atr and price:
+      delta_trigger_bps = abs(trig - price) / max(1e-6, price) * 10000.0
       if side == "long":
         action = {"trigger": round(trig,2), "entry_range":[round(trig,2), round(trig+entry_chase*atr,2)], "stop": round((vwap or price)-stop_off*atr,2), "tp1": round(trig+tp1_atr*atr,2), "tp2": round(trig+tp2_atr*atr,2), "invalid_if":"1-min close below EMA21"}
       else:
         action = {"trigger": round(trig,2), "entry_range":[round(trig-entry_chase*atr,2), round(trig,2)], "stop": round((vwap or price)+stop_off*atr,2), "tp1": round(trig-tp1_atr*atr,2), "tp2": round(trig-tp2_atr*atr,2), "invalid_if":"1-min close above EMA21"}
+    
+    # Calculate risk:reward ratio
+    rr = 0.0
+    if action and action.get("stop") and action.get("tp2"):
+        entry_mid = sum(action["entry_range"]) / 2.0 if action.get("entry_range") else action.get("trigger", 0)
+        risk_amt = abs(entry_mid - action["stop"])
+        reward_amt = abs(action["tp2"] - entry_mid)
+        rr = reward_amt / max(1e-6, risk_amt)
 
     return {
       "decision": "BUY" if (action and side=="long") else ("SELL" if (action and side=="short") else "WAIT"),
       "score": round(score,2), "confidence": round(conf,2),
       "bands": [round(don_l or price, 2), round(don_u or price, 2)],
-      "action": action, "why": {**factors, "checks":{"VWAPΔ": factors["vwap"]>=0.5, "VolX": (s.get("vol_mult") or 1.0)>=1.0}},
-      "meta": {"age_s": round(s["_age_s"],1), "regime": regime, "liquidity_ok": liq_ok}
+      "action": action,
+      "risk": {
+          "atr": round(atr or 0.0, 2),
+          "rr": round(rr, 2),
+          "delta_trigger_bps": round(delta_trigger_bps, 1)
+      },
+      "why": {**factors, "checks":{"VWAPΔ": factors["vwap"]>=0.5, "VolX": (s.get("vol_mult") or s.get("minute_vol_multiple") or 1.0)>=1.0}},
+      "meta": {"age_s": round(s["_age_s"],1), "regime": regime, "liquidity_ok": liq_ok, "source": "live"}
     }
 
 def session_status() -> Dict:
