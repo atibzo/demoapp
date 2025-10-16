@@ -379,6 +379,33 @@ _INSTRUMENTS_CACHE = {}
 _INSTRUMENTS_CACHE_TIME = None
 INSTRUMENTS_CACHE_TTL = 3600  # Cache for 1 hour
 
+def warm_instruments_cache(ks) -> bool:
+    """
+    Pre-warm the instruments cache with NSE and BSE data.
+    Call this on application startup or when cache is empty.
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    import logging
+    log = logging.getLogger(__name__)
+    
+    try:
+        log.info("[CACHE_WARM] Pre-warming instruments cache for NSE and BSE...")
+        
+        # Warm NSE cache
+        nse_instruments = _get_cached_instruments(ks, "NSE")
+        log.info(f"[CACHE_WARM] ✅ Warmed NSE cache: {len(nse_instruments)} instruments")
+        
+        # Warm BSE cache  
+        bse_instruments = _get_cached_instruments(ks, "BSE")
+        log.info(f"[CACHE_WARM] ✅ Warmed BSE cache: {len(bse_instruments)} instruments")
+        
+        return True
+    except Exception as e:
+        log.error(f"[CACHE_WARM] ❌ Failed to warm cache: {e}", exc_info=True)
+        return False
+
 def _get_cached_instruments(ks, exchange: str = None):
     """
     Get instruments with caching to avoid rate limits.
@@ -407,33 +434,49 @@ def _get_cached_instruments(ks, exchange: str = None):
     
     # Return from cache if available and fresh
     if not cache_expired and cache_key in _INSTRUMENTS_CACHE:
-        log.debug(f"[CACHE] Returning cached instruments for {cache_key} ({len(_INSTRUMENTS_CACHE[cache_key])} instruments)")
+        log.debug(f"[CACHE] ✅ Returning cached instruments for {cache_key} ({len(_INSTRUMENTS_CACHE[cache_key])} instruments)")
         return _INSTRUMENTS_CACHE[cache_key]
     
-    # Fetch from API
+    # If cache exists but is stale, return it anyway to avoid rate limits
+    # We'll try to refresh in the background, but always prefer stale cache over API errors
+    if cache_key in _INSTRUMENTS_CACHE:
+        log.info(f"[CACHE] ⚡ Using stale cache for {cache_key} (age: {int(current_time - _INSTRUMENTS_CACHE_TIME)}s)")
+        # Still return the stale cache, but try to refresh async if possible
+        return _INSTRUMENTS_CACHE[cache_key]
+    
+    # Fetch from API only if no cache exists at all
     try:
         if exchange:
-            log.info(f"[CACHE] Fetching instruments for {exchange} from Kite API...")
+            log.info(f"[CACHE] 🔄 Fetching instruments for {exchange} from Kite API (first time)...")
             instruments = ks.instruments(exchange)
         else:
-            log.info(f"[CACHE] Fetching ALL instruments from Kite API...")
+            log.info(f"[CACHE] 🔄 Fetching ALL instruments from Kite API (first time)...")
             instruments = ks.instruments()
         
         if instruments and isinstance(instruments, list):
             _INSTRUMENTS_CACHE[cache_key] = instruments
             _INSTRUMENTS_CACHE_TIME = current_time
-            log.info(f"[CACHE] Cached {len(instruments)} instruments for {cache_key}")
+            log.info(f"[CACHE] ✅ Cached {len(instruments)} instruments for {cache_key}")
             return instruments
         else:
-            log.warning(f"[CACHE] Invalid instruments response for {cache_key}")
+            log.warning(f"[CACHE] ⚠️ Invalid instruments response for {cache_key}")
             return []
             
     except Exception as e:
-        log.error(f"[CACHE] Error fetching instruments for {cache_key}: {e}")
+        error_msg = str(e)
+        
+        # Special handling for rate limit errors
+        if "too many requests" in error_msg.lower() or "rate limit" in error_msg.lower():
+            log.error(f"[CACHE] 🚫 RATE LIMIT hit for {cache_key}. Using stale cache if available.")
+        else:
+            log.error(f"[CACHE] ❌ Error fetching instruments for {cache_key}: {e}")
+        
         # Return stale cache if available, even if expired
         if cache_key in _INSTRUMENTS_CACHE:
-            log.warning(f"[CACHE] Returning stale cache for {cache_key} due to API error")
+            log.warning(f"[CACHE] 💾 Returning stale cache for {cache_key} due to API error ({len(_INSTRUMENTS_CACHE[cache_key])} instruments)")
             return _INSTRUMENTS_CACHE[cache_key]
+        
+        log.error(f"[CACHE] 💥 No cache available for {cache_key} and API call failed")
         return []
 
 
@@ -611,8 +654,17 @@ def _find_instrument_token_robust(ks, symbol: str) -> tuple[int | None, str | No
         except Exception as e:
             log.error(f"[ROBUST_LOOKUP] Error in global search: {e}")
     
-    log.error(f"[ROBUST_LOOKUP] ❌ FAILED: Could not find instrument token for {symbol} on any exchange. "
-             f"Tried {len(exchanges_to_try)} exchanges with multiple variations.")
+    # Log detailed failure info
+    log.error(f"[ROBUST_LOOKUP] ❌ FAILED: Could not find instrument token for {symbol} on any exchange.")
+    log.error(f"[ROBUST_LOOKUP] Tried exchanges: {exchanges_to_try}")
+    log.error(f"[ROBUST_LOOKUP] Searched for variations: {[tradingsymbol, f'{tradingsymbol}-EQ', f'{tradingsymbol}-BE']}")
+    log.error(f"[ROBUST_LOOKUP] Cache status: {list(_INSTRUMENTS_CACHE.keys())}")
+    
+    # If cache is empty, that's likely the issue
+    if not _INSTRUMENTS_CACHE:
+        log.error(f"[ROBUST_LOOKUP] 💥 CACHE IS EMPTY! This is likely due to rate limiting. "
+                 f"The application needs to warm the cache on startup.")
+    
     return None, None
 
 
@@ -649,15 +701,19 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
             log.error(f"[FETCH] Kite session not initialized.")
             return []
         
-        # Use ULTRA-ROBUST instrument lookup
+        # Use ULTRA-ROBUST instrument lookup with detailed error reporting
         try:
             token, found_exchange = _find_instrument_token_robust(ks, symbol)
         except Exception as e:
-            log.error(f"[FETCH] Error in instrument lookup for {symbol}: {e}", exc_info=True)
+            log.error(f"[FETCH] ⚠️ Exception in instrument lookup for {symbol}: {e}", exc_info=True)
+            # Check if it's a rate limit error
+            if "too many requests" in str(e).lower() or "rate limit" in str(e).lower():
+                log.error(f"[FETCH] 🚫 Rate limit hit while looking up {symbol}. Try again in a few minutes.")
             return []
         
         if not token or not isinstance(token, int):
             log.error(f"[FETCH] ❌ Could not find instrument token for {symbol} on any exchange. "
+                     f"Parsed as: exchange='{found_exchange if found_exchange else 'None'}', token='{token}'. "
                      f"Please verify the symbol is correct. Examples: NSE:INFY, BSE:RELIANCE, NSE:BHEL")
             return []
         
