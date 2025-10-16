@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { API, j } from '@/lib/api';
@@ -36,7 +36,7 @@ export default function AnalystClient(){
   const sym0 = sp.get('symbol') || 'NSE:INFY';
   const date0 = sp.get('date') || '';
 
-  const [mode, setMode] = useState<'LIVE'|'HIST'>(date0 ? 'HIST' : 'HIST');
+  const [mode, setMode] = useState<'LIVE'|'HIST'>(date0 ? 'HIST' : 'LIVE');
   const [symbol, setSymbol] = useState(sym0);
   const [date, setDate] = useState<string>(date0);    // yyyy-mm-dd
   const [bars, setBars] = useState<Bar[]>([]);
@@ -49,18 +49,49 @@ export default function AnalystClient(){
   const [loadingWhatif, setLoadingWhatif] = useState(false);
   const [error, setError] = useState<string|null>(null);
   const [liveData, setLiveData] = useState<any>(null);
+  const [lastRefresh, setLastRefresh] = useState<number>(0);
 
   const curBar = bars[ix];
 
+  // Refs for debouncing
+  const analysisTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const liveRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Debounced analysis loading
+  const loadAnalysisDebounced = useCallback((delayMs: number = 300) => {
+    if (analysisTimeoutRef.current) {
+      clearTimeout(analysisTimeoutRef.current);
+    }
+
+    analysisTimeoutRef.current = setTimeout(() => {
+      if (mode === 'HIST' && bars.length > 0) {
+        loadHistoricalAnalysis();
+      }
+    }, delayMs);
+  }, [mode, symbol, date, ix, bars.length]);
+
   async function loadDay(){
     if(!symbol || !date) return;
+    
+    // Cancel any pending requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     try{
       setLoadingDay(true);
       setError(null);
       console.log(`[Analyst] Loading data for ${symbol} on ${date}`);
       
-      // Auto-fetch is now enabled by default - will fetch from Kite if not cached
-      const r = await fetch(`${API}/api/v2/hist/bars?symbol=${encodeURIComponent(symbol)}&date=${date}&auto_fetch=true`, { cache: 'no-store' });
+      const r = await fetch(
+        `${API}/api/v2/hist/bars?symbol=${encodeURIComponent(symbol)}&date=${date}&auto_fetch=true`, 
+        { 
+          cache: 'no-store',
+          signal: abortControllerRef.current.signal
+        }
+      );
       
       console.log(`[Analyst] Fetch response status: ${r.status}`);
       
@@ -70,7 +101,6 @@ export default function AnalystClient(){
         
         let errorMsg = errData.detail || 'Failed to load historical data.';
         
-        // Add helpful context based on status code
         if (r.status === 401) {
           errorMsg = '🔒 Not logged in to Zerodha. Please login first to fetch historical data.';
         } else if (r.status === 404) {
@@ -108,7 +138,14 @@ export default function AnalystClient(){
       setIx(mid);
       setError(null);
       console.log(`[Analyst] Successfully loaded ${b.length} bars for ${symbol}`);
+      
+      // Trigger analysis load after bars are loaded
+      loadAnalysisDebounced(100);
     } catch(e: any) {
+      if (e.name === 'AbortError') {
+        console.log('[Analyst] Request aborted');
+        return;
+      }
       console.error('[Analyst] Error loading data:', e);
       setError(`Network error: ${e?.message || 'Failed to load historical data'}. Make sure the backend is running and you are logged in to Zerodha.`);
       setBars([]);
@@ -117,8 +154,53 @@ export default function AnalystClient(){
     }
   }
 
+  async function loadHistoricalAnalysis() {
+    if(mode!=='HIST' || bars.length===0 || ix < 0 || ix >= bars.length) return;
+    
+    // Cancel any pending analysis requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
+    try {
+      setLoadingAnalysis(true);
+      const t = HHMM(bars[ix].ts);
+      const r = await fetch(
+        `${API}/api/v2/hist/analyze?symbol=${encodeURIComponent(symbol)}&date=${date}&time=${t}`, 
+        { 
+          cache:'no-store',
+          signal: abortControllerRef.current.signal
+        }
+      );
+      if(!r.ok){ 
+        setAz(null); 
+        return; 
+      }
+      const a = await r.json();
+      setAz(a);
+      setLastRefresh(Date.now());
+    } catch(e: any) {
+      if (e.name === 'AbortError') {
+        console.log('[Analyst] Analysis request aborted');
+        return;
+      }
+      console.error('[Analyst] Error loading analysis:', e);
+    } finally {
+      setLoadingAnalysis(false);
+    }
+  }
+
   async function loadLive(){
     if(!symbol) return;
+    
+    // Prevent overlapping requests (debounce)
+    const now = Date.now();
+    if (now - lastRefresh < 2000) {
+      console.log('[Analyst] Skipping live refresh - too soon');
+      return;
+    }
+    
     try{
       setLoadingAnalysis(true);
       setError(null);
@@ -131,6 +213,7 @@ export default function AnalystClient(){
       const data = await r.json();
       setLiveData(data);
       setAz(data);
+      setLastRefresh(Date.now());
     } catch(e: any) {
       setError(e?.message || 'Failed to load live data');
     } finally {
@@ -145,44 +228,78 @@ export default function AnalystClient(){
     }
   }, []);
 
-  // Auto-refresh for live mode
+  // Auto-refresh for live mode with proper cleanup
   useEffect(() => {
-    if (mode === 'LIVE') {
-      loadLive();
-      const interval = setInterval(loadLive, 10000); // Refresh every 10s
-      return () => clearInterval(interval);
+    // Clear existing interval
+    if (liveRefreshIntervalRef.current) {
+      clearInterval(liveRefreshIntervalRef.current);
+      liveRefreshIntervalRef.current = null;
     }
+
+    if (mode === 'LIVE') {
+      // Initial load
+      loadLive();
+      
+      // Set up interval for subsequent refreshes
+      liveRefreshIntervalRef.current = setInterval(() => {
+        loadLive();
+      }, 10000); // Refresh every 10s
+    }
+
+    // Cleanup on unmount or mode change
+    return () => {
+      if (liveRefreshIntervalRef.current) {
+        clearInterval(liveRefreshIntervalRef.current);
+        liveRefreshIntervalRef.current = null;
+      }
+    };
   }, [mode, symbol]);
 
-  useEffect(()=>{ (async ()=>{
-    if(mode!=='HIST' || bars.length===0) return;
-    try {
-      setLoadingAnalysis(true);
-      const t = HHMM(bars[ix].ts);
-      const r = await fetch(`${API}/api/v2/hist/analyze?symbol=${encodeURIComponent(symbol)}&date=${date}&time=${t}`, { cache:'no-store' });
-      if(!r.ok){ setAz(null); return; }
-      const a = await r.json();
-      setAz(a);
-    } finally {
-      setLoadingAnalysis(false);
+  // Load analysis when index changes in historical mode
+  useEffect(() => {
+    if (mode === 'HIST' && bars.length > 0) {
+      loadAnalysisDebounced();
     }
-  })(); }, [mode, symbol, date, ix, bars.length]);
+  }, [ix, mode, bars.length]);
 
-  useEffect(()=>{ (async()=>{
-    if(!az || !az.action || !az.action.entry_range) { setWhatif(null); return; }
-    try {
-      setLoadingWhatif(true);
-      const entry = az.action.entry_range[1];
-      const stop  = az.action.stop;
-      const tp2   = az.action.tp2;
-      const url = `${API}/api/v2/hist/whatif?symbol=${encodeURIComponent(symbol)}&date=${date}&time=${HHMM(bars[ix].ts)}&entry=${entry}&stop=${stop}&tp2=${tp2}&risk_amt=${riskAmt}`;
-      const r = await fetch(url, { cache:'no-store' });
-      if(!r.ok){ setWhatif(null); return; }
-      setWhatif(await r.json());
-    } finally {
-      setLoadingWhatif(false);
-    }
-  })(); }, [az, riskAmt, ix, symbol, date, bars.length]);
+  // Load whatif when analysis or risk amount changes
+  useEffect(() => {
+    let cancelled = false;
+    
+    (async()=>{
+      if(!az || !az.action || !az.action.entry_range || mode !== 'HIST') { 
+        setWhatif(null); 
+        return; 
+      }
+      
+      try {
+        setLoadingWhatif(true);
+        const entry = az.action.entry_range[1];
+        const stop  = az.action.stop;
+        const tp2   = az.action.tp2;
+        const url = `${API}/api/v2/hist/whatif?symbol=${encodeURIComponent(symbol)}&date=${date}&time=${HHMM(bars[ix].ts)}&entry=${entry}&stop=${stop}&tp2=${tp2}&risk_amt=${riskAmt}`;
+        const r = await fetch(url, { cache:'no-store' });
+        if(!r.ok || cancelled){ 
+          setWhatif(null); 
+          return; 
+        }
+        const data = await r.json();
+        if (!cancelled) {
+          setWhatif(data);
+        }
+      } catch(e) {
+        console.error('[Analyst] Error loading whatif:', e);
+      } finally {
+        if (!cancelled) {
+          setLoadingWhatif(false);
+        }
+      }
+    })();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [az, riskAmt, mode]);
 
   const svg = useMemo(()=>{
     if(bars.length===0) return null;
@@ -247,6 +364,15 @@ export default function AnalystClient(){
     );
   }, [bars, ix, az?.action]);
 
+  // Confidence level indicator
+  const getConfidenceLevel = (conf: number) => {
+    if (conf >= 0.7) return { label: 'HIGH', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' };
+    if (conf >= 0.5) return { label: 'MEDIUM', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' };
+    return { label: 'LOW', color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-200' };
+  };
+
+  const confidenceInfo = az?.confidence != null ? getConfidenceLevel(az.confidence) : null;
+
   return (
     <div className="mx-auto max-w-[1200px] px-3 md:px-6 py-6 md:py-8">
       <div className="flex items-center gap-3 mb-4">
@@ -257,6 +383,12 @@ export default function AnalystClient(){
           Home
         </Link>
         <div className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">Analyst</div>
+        {loadingAnalysis && (
+          <div className="flex items-center gap-2 text-xs text-blue-600">
+            <Spinner size="sm" />
+            <span>Analyzing...</span>
+          </div>
+        )}
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -318,7 +450,7 @@ export default function AnalystClient(){
         </div>
       )}
 
-      {mode==='HIST' && !date && !bars.length && (
+      {mode==='HIST' && !date && !bars.length && !loadingDay && (
         <div className="mt-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 text-sm animate-fadeIn">
           <div className="flex items-start gap-2">
             <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
@@ -332,28 +464,6 @@ export default function AnalystClient(){
                 <li><strong>Click "Load Day"</strong> - Our ultra-robust system will find and fetch the data automatically!</li>
                 <li><strong>Analyze anywhere in the day</strong> using the time slider - see real-time analysis at any minute</li>
               </ol>
-              <div className="mt-3 p-2 rounded bg-gradient-to-br from-blue-100 to-cyan-100 text-xs border border-blue-300">
-                <div className="font-bold mb-2 text-blue-900">✨ Revolutionary Features:</div>
-                <ul className="list-disc list-inside space-y-1 text-[11px]">
-                  <li><strong>🌐 Universal Symbol Support:</strong> Works with ANY valid NSE/BSE stock - not limited to any predefined list!</li>
-                  <li><strong>🔍 Ultra-Robust Search:</strong> Tries multiple strategies to find your stock (exact match, with suffixes, cross-exchange, fuzzy match)</li>
-                  <li><strong>🎯 100% Independent:</strong> Zero dependency on "Top Algos" tab - completely standalone tool</li>
-                  <li><strong>⚡ Smart Auto-Fetch:</strong> Automatically fetches from Zerodha Kite API when needed</li>
-                  <li><strong>💾 Intelligent Caching:</strong> Data cached for instant re-access</li>
-                  <li><strong>📊 600+ Stock Universe:</strong> Expanded list for quick scanning, but analyzer works beyond it!</li>
-                </ul>
-              </div>
-              <div className="mt-2 p-2 rounded bg-amber-50 text-xs border border-amber-300">
-                <div className="font-semibold mb-1 text-amber-900">⚠️ Requirements:</div>
-                <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-800">
-                  <li>Must be logged in to Zerodha (click "Login with Zerodha" button above)</li>
-                  <li>Date must be a past trading day (markets open Mon-Fri, excluding holidays)</li>
-                  <li>Symbol must be valid and traded on NSE/BSE exchanges</li>
-                </ul>
-              </div>
-              <div className="mt-2 text-xs text-green-700 font-medium">
-                💡 <strong>Pro Tip:</strong> Try any stock you want! The system is designed to find it, even if it's not in our curated list. Just enter the symbol and let the magic happen! ✨
-              </div>
             </div>
           </div>
         </div>
@@ -361,19 +471,25 @@ export default function AnalystClient(){
 
       {mode==='HIST' && bars.length>0 && (
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-card p-4">
-          <div className="flex items-center justify-between text-xs text-zinc-600">
+          <div className="flex items-center justify-between text-xs text-zinc-600 mb-2">
             <span>{HHMM(bars[0].ts)}</span>
-            <span className="font-mono">{HHMM(bars[ix].ts)}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono font-semibold text-base text-slate-800">{HHMM(bars[ix].ts)}</span>
+              {loadingAnalysis && <Spinner size="sm" />}
+            </div>
             <span>{HHMM(bars[bars.length-1].ts)}</span>
           </div>
           <input type="range" min={0} max={Math.max(0,bars.length-1)} value={ix}
                  onChange={e=>setIx(parseInt(e.target.value))}
-                 className="w-full mt-1" />
+                 className="w-full" />
+          <div className="text-xs text-center text-slate-500 mt-1">
+            Bar {ix + 1} of {bars.length}
+          </div>
         </div>
       )}
 
       {/* AI Contextual Tips */}
-      {az && (
+      {az && !loadingAnalysis && (
         <div className="mt-4">
           <ContextualTips 
             contextType="analyst"
@@ -437,7 +553,7 @@ export default function AnalystClient(){
         <div className="space-y-3">
           <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-4 relative">
             {loadingAnalysis && (
-              <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center rounded-2xl">
+              <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center rounded-2xl z-10">
                 <Spinner size="md" />
               </div>
             )}
@@ -465,10 +581,30 @@ export default function AnalystClient(){
                 Explain
               </button>
             </div>
-            <div className="mt-2 flex items-baseline gap-3">
+            <div className="mt-2 flex items-center gap-3">
               <div className={`text-2xl font-black ${az?.decision==='BUY'?'text-emerald-600': az?.decision==='SELL'?'text-rose-600':'text-slate-800'}`}>{az?.decision || '—'}</div>
-              <div className="text-sm font-medium text-slate-500">conf {az?.confidence ?? '—'}</div>
+              {confidenceInfo && (
+                <div className={`px-3 py-1 rounded-full text-xs font-bold ${confidenceInfo.bg} ${confidenceInfo.color} ${confidenceInfo.border} border`}>
+                  {confidenceInfo.label}
+                </div>
+              )}
             </div>
+            {az?.confidence != null && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-xs text-slate-600 mb-1">
+                  <span>Confidence Score</span>
+                  <span className="font-bold">{(az.confidence * 100).toFixed(0)}%</span>
+                </div>
+                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      az.confidence >= 0.7 ? 'bg-emerald-500' : az.confidence >= 0.5 ? 'bg-amber-500' : 'bg-rose-500'
+                    }`}
+                    style={{ width: `${az.confidence * 100}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 p-3 border border-slate-200">
                 <div className="flex items-center gap-1 text-slate-500 font-medium">
@@ -509,31 +645,43 @@ export default function AnalystClient(){
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-4 relative">
-            {loadingWhatif && (
-              <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center rounded-2xl">
-                <Spinner size="md" />
+          {mode === 'HIST' && (
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-4 relative">
+              {loadingWhatif && (
+                <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center rounded-2xl">
+                  <Spinner size="md" />
+                </div>
+              )}
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Position Size</div>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs">Risk ₹</span>
+                <input type="number" value={riskAmt} onChange={e=>setRiskAmt(parseFloat(e.target.value||'0'))}
+                       className="w-28 rounded border border-zinc-300 px-2 py-1 text-sm" />
               </div>
-            )}
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Position Size</div>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-xs">Risk ₹</span>
-              <input type="number" value={riskAmt} onChange={e=>setRiskAmt(parseFloat(e.target.value||'0'))}
-                     className="w-28 rounded border border-zinc-300 px-2 py-1 text-sm" />
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded bg-zinc-50 p-2">Qty <div className="font-mono">{whatif?.qty ?? '—'}</div></div>
+                <div className="rounded bg-zinc-50 p-2">Notional <div className="font-mono">₹ {whatif?.notional ?? '—'}</div></div>
+                <div className="rounded bg-zinc-50 p-2">RR <div className="font-mono">{whatif?.rr ?? '—'}</div></div>
+                <div className="rounded bg-zinc-50 p-2">Fees <div className="font-mono">₹ {whatif?.fees ?? 0}</div></div>
+              </div>
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-              <div className="rounded bg-zinc-50 p-2">Qty <div className="font-mono">{whatif?.qty ?? '—'}</div></div>
-              <div className="rounded bg-zinc-50 p-2">Notional <div className="font-mono">₹ {whatif?.notional ?? '—'}</div></div>
-              <div className="rounded bg-zinc-50 p-2">RR <div className="font-mono">{whatif?.rr ?? '—'}</div></div>
-              <div className="rounded bg-zinc-50 p-2">Fees <div className="font-mono">₹ {whatif?.fees ?? 0}</div></div>
-            </div>
-          </div>
+          )}
 
           <div className="rounded-2xl border border-slate-200 bg-white shadow-card p-4">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Checklist</div>
-            <ul className="mt-1 text-sm space-y-1">
-              <li>VWAPΔ {az?.why?.checks?.['VWAPΔ'] ? '✓' : '✗'}</li>
-              <li>VolX {az?.why?.checks?.['VolX'] ? '✓' : '✗'}</li>
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Checklist</div>
+            <ul className="text-sm space-y-2">
+              <li className="flex items-center gap-2">
+                <span className={`w-5 h-5 rounded flex items-center justify-center ${az?.why?.checks?.['VWAPΔ'] ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                  {az?.why?.checks?.['VWAPΔ'] ? '✓' : '✗'}
+                </span>
+                <span>VWAP Alignment</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className={`w-5 h-5 rounded flex items-center justify-center ${az?.why?.checks?.['VolX'] ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                  {az?.why?.checks?.['VolX'] ? '✓' : '✗'}
+                </span>
+                <span>Volume Surge</span>
+              </li>
             </ul>
           </div>
         </div>

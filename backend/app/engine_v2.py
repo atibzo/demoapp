@@ -115,8 +115,26 @@ def _score_conf(factors: Dict[str,float], pol: Dict, regime: str, fresh_ok: bool
            w.get("volume",0.6)*factors["volume"])
     den = (w.get("trend",1)+w.get("pullback",0.6)+w.get("vwap",0.8)+w.get("breakout",0.7)+w.get("volume",0.6))
     score = 100.0 * num / max(1e-6, den)
+    
+    # Better confidence calculation: base confidence from factors
     caps = pol.get("regime_caps", {"Calm":0.9,"Normal":0.8,"Hot":0.6})
-    conf = min(1.0 if fresh_ok else 0.0, 1.0 if liq_ok else 0.5, float(caps.get(regime,0.8)), float(factors["trend"]))
+    regime_cap = float(caps.get(regime, 0.8))
+    
+    # Base confidence from normalized factors (0..1 range)
+    base_conf = num / max(1e-6, den)  # This gives 0..1 range since factors are 0..1
+    
+    # Apply regime cap
+    conf = min(base_conf, regime_cap)
+    
+    # Apply penalties instead of hard caps
+    if not fresh_ok:
+        conf *= 0.3  # Significant penalty for stale data
+    if not liq_ok:
+        conf *= 0.7  # Moderate penalty for liquidity issues (not a hard cap)
+    
+    # Ensure confidence is in valid range
+    conf = max(0.0, min(1.0, float(conf)))
+    
     return float(score), float(conf)
 
 def _universe_soft_reason(sym: str, pol: Dict) -> Optional[str]:

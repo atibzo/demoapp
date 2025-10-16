@@ -278,21 +278,49 @@ def analyze_snapshot(snap: Dict[str,Any], policy: Dict[str,Any]) -> Dict[str,Any
     # Volume factor
     f_vol = min(snap["minute_vol_multiple"]/ (th.get("min_volx",1.4)), 1.2)  # capped
 
-    score = (
-        w.get("trend",1.0)*f_trend +
-        w.get("vwap",1.0)*f_vwap +
-        w.get("pullback",1.0)*f_pull +
-        w.get("breakout",1.0)*f_break +
-        w.get("volume",1.0)*f_vol
-    )
-    # Confidence squashed to 0..1
-    confidence = 1/(1+math.exp(-score))
-
-    # Checks
+    # Checks (calculate first before using in confidence calculation)
     checks = {
         "VWAPΔ": dev_atr <= th.get("vwap_reversion_max_dev", 0.6),
         "VolX":  snap["minute_vol_multiple"] >= th.get("min_volx", 1.4),
     }
+
+    # Calculate weighted score (0..1 range for each factor)
+    weights = {
+        "trend": w.get("trend", 1.0),
+        "vwap": w.get("vwap", 1.0),
+        "pullback": w.get("pullback", 1.0),
+        "breakout": w.get("breakout", 1.0),
+        "volume": w.get("volume", 1.0)
+    }
+    total_weight = sum(weights.values())
+    
+    # Normalize factors to 0..1 range for better confidence calculation
+    norm_trend = (f_trend + 1.0) / 2.0  # -1..1 -> 0..1
+    norm_vwap = (f_vwap + 1.0) / 2.0    # -1..1 -> 0..1
+    norm_pull = max(0.0, min(1.0, f_pull))   # already 0..1
+    norm_break = max(0.0, min(1.0, f_break)) # already 0..1
+    norm_vol = max(0.0, min(1.0, f_vol / 1.2))  # 0..1.2 -> 0..1
+    
+    # Weighted average score (0..1)
+    score = (
+        weights["trend"] * norm_trend +
+        weights["vwap"] * norm_vwap +
+        weights["pullback"] * norm_pull +
+        weights["breakout"] * norm_break +
+        weights["volume"] * norm_vol
+    ) / max(1e-6, total_weight)
+    
+    # Confidence is the score itself, with adjustments for check failures
+    confidence = score
+    
+    # Penalize confidence if checks fail
+    if not checks.get("VWAPΔ", False):
+        confidence *= 0.8  # 20% penalty
+    if not checks.get("VolX", False):
+        confidence *= 0.85  # 15% penalty
+    
+    # Ensure confidence is in valid range
+    confidence = max(0.0, min(1.0, confidence))
 
     # Bracket
     entry_chase = th.get("entry_chase_atr", 0.15)
