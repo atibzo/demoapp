@@ -484,7 +484,7 @@ function TopAlgos({session}:{session:Session|null}) {
               <td className="px-3 py-2 font-mono">{Number(r.score).toFixed(1)}</td>
               <td className="px-3 py-2 font-mono">{Number(r.confidence).toFixed(2)}</td>
               <td className="px-3 py-2">{Number(r.age_s).toFixed(1)}</td>
-              <td className="px-3 py-2">{r.delta_trigger_bps ?? '—'}</td>
+              <td className="px-3 py-2">{r.delta_trigger_bps != null ? Number(r.delta_trigger_bps).toFixed(1) : '—'}</td>
               <td className="px-3 py-2">{r.regime}</td>
               <td className="px-3 py-2 capitalize">{r.readiness}</td>
               <td className="px-3 py-2 text-xs">

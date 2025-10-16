@@ -430,6 +430,7 @@ class TickerDaemon:
                     pass
 
         self.r.set("ticker:alive", now)
+        self.r.set("ticker:heartbeat", now_ms())  # Also update heartbeat for session_status
         for tk in ticks:
             token = tk.get("instrument_token")
             lp    = tk.get("last_price")

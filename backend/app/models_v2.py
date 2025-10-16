@@ -24,6 +24,7 @@ class AnalyzeResponseV2(BaseModel):
     confidence: float
     bands: List[float]  # Changed from Dict to List to match frontend expectation
     action: Dict[str, object]
+    risk: Dict[str, float]  # Added risk object with atr, rr, delta_trigger_bps
     why: Dict[str, object]
     meta: Dict[str, object]
 
