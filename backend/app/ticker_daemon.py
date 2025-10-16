@@ -38,6 +38,9 @@ HIST_INTERVAL = os.getenv("HIST_INTERVAL", "minute")
 MARKET_OPEN  = os.getenv("MARKET_OPEN",  "09:15")
 MARKET_CLOSE = os.getenv("MARKET_CLOSE", "15:30")
 
+# WebSocket mode: LTP | QUOTE | FULL (default QUOTE for stability)
+TICKER_WS_MODE = os.getenv("TICKER_WS_MODE", "QUOTE").strip().upper()
+
 # ---------- Data classes ----------
 @dataclass
 class Bar:
@@ -315,6 +318,13 @@ class TickerDaemon:
         self._stop = threading.Event()
         self._last_min = int(now_s() // 60)
 
+        # Resolve desired WebSocket streaming mode
+        self._ws_mode = {
+            "FULL": self.kws.MODE_FULL,
+            "QUOTE": self.kws.MODE_QUOTE,
+            "LTP": self.kws.MODE_LTP,
+        }.get(TICKER_WS_MODE, self.kws.MODE_QUOTE)
+
         # Persist maps (guard empty)
         if self.token2sym:
             self.r.hset("inst:token2sym", mapping={str(k): v for k, v in self.token2sym.items()})
@@ -379,12 +389,19 @@ class TickerDaemon:
         if not to_add:
             print("[ticker] No new tokens to subscribe", file=sys.stderr)
             return
-        print(f"[ticker] Subscribing to {len(to_add)} tokens...", file=sys.stderr)
-        self.kws.subscribe(to_add)
-        self.kws.set_mode(self.kws.MODE_FULL, to_add)
-        self.subscribed.update(to_add)
-        self.r.sadd("subs:tokens", *[str(t) for t in to_add])
-        print(f"[ticker] Successfully subscribed to {len(to_add)} tokens", file=sys.stderr)
+        print(f"[ticker] Subscribing to {len(to_add)} tokens in mode={TICKER_WS_MODE}...", file=sys.stderr)
+
+        batch_size = max(0, int(ROTATE_BATCH)) or len(to_add)
+        for i in range(0, len(to_add), batch_size):
+            batch = to_add[i:i + batch_size]
+            try:
+                self.kws.subscribe(batch)
+                self.kws.set_mode(self._ws_mode, batch)
+                self.subscribed.update(batch)
+                self.r.sadd("subs:tokens", *[str(t) for t in batch])
+            except Exception as e:
+                print(f"[ticker] subscribe batch failed size={len(batch)} err={e}", file=sys.stderr)
+        print(f"[ticker] Successfully subscribed to {len(to_add)} tokens (batched {batch_size})", file=sys.stderr)
 
     def _rotate_active(self):
         ranked = sorted(self.active_tokens, key=lambda t: sum(self.turnover[t]) if self.turnover[t] else 0.0, reverse=True)
@@ -394,9 +411,15 @@ class TickerDaemon:
         remove = [t for t in self.subscribed if t not in new_active]
         add = [t for t in new_active if t not in self.subscribed]
         if add:
-            self.kws.subscribe(add)
-            self.kws.set_mode(self.kws.MODE_FULL, add)
-            self.subscribed.update(add)
+            batch_size = max(0, int(ROTATE_BATCH)) or len(add)
+            for i in range(0, len(add), batch_size):
+                batch = add[i:i + batch_size]
+                try:
+                    self.kws.subscribe(batch)
+                    self.kws.set_mode(self._ws_mode, batch)
+                    self.subscribed.update(batch)
+                except Exception as e:
+                    print(f"[ticker] rotate subscribe batch failed size={len(batch)} err={e}", file=sys.stderr)
         if remove:
             self.kws.unsubscribe(remove)
             for t in remove:
