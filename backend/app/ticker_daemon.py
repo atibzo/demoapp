@@ -302,6 +302,11 @@ class TickerDaemon:
             )
 
         self.active_tokens: List[int] = compute_active(self.sym2token, self.r, UNIVERSE_DEFAULT)
+        if not self.active_tokens:
+            print("[ticker] WARNING: No active tokens computed. Check cfg:universe_limit and cfg:pinned in Redis.", file=sys.stderr)
+        else:
+            print(f"[ticker] Computed {len(self.active_tokens)} active tokens to subscribe", file=sys.stderr)
+        
         self.subscribed: set[int] = set()
         self.kws = KiteTicker(self.ks.api_key, self.ks.access_token, reconnect=True)
         self.ind = MinuteIndicators()
@@ -372,11 +377,14 @@ class TickerDaemon:
     def _subscribe_active(self):
         to_add = [t for t in self.active_tokens if t not in self.subscribed]
         if not to_add:
+            print("[ticker] No new tokens to subscribe", file=sys.stderr)
             return
+        print(f"[ticker] Subscribing to {len(to_add)} tokens...", file=sys.stderr)
         self.kws.subscribe(to_add)
         self.kws.set_mode(self.kws.MODE_FULL, to_add)
         self.subscribed.update(to_add)
         self.r.sadd("subs:tokens", *[str(t) for t in to_add])
+        print(f"[ticker] Successfully subscribed to {len(to_add)} tokens", file=sys.stderr)
 
     def _rotate_active(self):
         ranked = sorted(self.active_tokens, key=lambda t: sum(self.turnover[t]) if self.turnover[t] else 0.0, reverse=True)
@@ -475,22 +483,34 @@ class TickerDaemon:
 
     def _on_connect(self, ws, resp):
         try:
+            # Mark ticker as alive immediately on connection
+            now = now_s()
+            self.r.set("ticker:alive", now)
+            self.r.set("ticker:heartbeat", now_ms())
+            
             self._subscribe_active()
-            print(f"[ticker] subscribed {len(self.subscribed)} tokens", file=sys.stderr)
+            print(f"[ticker] connected and subscribed {len(self.subscribed)} tokens", file=sys.stderr)
         except Exception as e:
             print("subscribe failed:", e, file=sys.stderr)
+            self.r.set("ticker:alive", 0)
 
     def _on_close(self, ws, code, reason):
+        print(f"[ticker] WebSocket closed: code={code}, reason={reason}", file=sys.stderr)
         self.r.set("ticker:alive", 0)
 
     def _on_error(self, ws, code, reason):
+        print(f"[ticker] WebSocket error: code={code}, reason={reason}", file=sys.stderr)
         self.r.set("ticker:alive", 0)
 
     def run(self):
+        print(f"[ticker] Starting ticker daemon with {len(self.active_tokens)} active tokens", file=sys.stderr)
+        
         try:
+            print("[ticker] Running backfill...", file=sys.stderr)
             self.backfill()
+            print("[ticker] Backfill completed", file=sys.stderr)
         except Exception as e:
-            print("Backfill failed:", e, file=sys.stderr)
+            print(f"[ticker] Backfill failed: {e}", file=sys.stderr)
 
         self.kws.on_ticks = self._on_ticks
         self.kws.on_connect = self._on_connect
@@ -498,7 +518,9 @@ class TickerDaemon:
         self.kws.on_error  = self._on_error
 
         def stop_handler(*_):
+            print("[ticker] Received stop signal", file=sys.stderr)
             self._stop.set()
+            self.r.set("ticker:alive", 0)
             try:
                 self.kws.stop()
             except Exception:
@@ -507,15 +529,20 @@ class TickerDaemon:
         signal.signal(signal.SIGINT,  stop_handler)
         signal.signal(signal.SIGTERM, stop_handler)
 
+        print("[ticker] Connecting to KiteTicker WebSocket...", file=sys.stderr)
         while not self._stop.is_set():
             try:
                 self.kws.connect(threaded=False)
             except (NetworkException, TokenException) as e:
-                print("WebSocket error, retrying:", e, file=sys.stderr)
+                print(f"[ticker] WebSocket error, retrying in 2s: {e}", file=sys.stderr)
+                self.r.set("ticker:alive", 0)
                 time.sleep(2)
             except Exception as e:
-                print("Unexpected socket error:", e, file=sys.stderr)
+                print(f"[ticker] Unexpected socket error, retrying in 2s: {e}", file=sys.stderr)
+                self.r.set("ticker:alive", 0)
                 time.sleep(2)
+        
+        print("[ticker] Ticker daemon stopped", file=sys.stderr)
 
 
 def run():
