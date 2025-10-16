@@ -374,10 +374,117 @@ def get_symbols_for_date(date_yyyy_mm_dd: str) -> List[str]:
             symbols.append(parts[1])
     return sorted(set(symbols))
 
+# Global cache for instruments to avoid hitting rate limits
+_INSTRUMENTS_CACHE = {}
+_INSTRUMENTS_CACHE_TIME = None
+INSTRUMENTS_CACHE_TTL = 3600  # Cache for 1 hour
+
+def warm_instruments_cache(ks) -> bool:
+    """
+    Pre-warm the instruments cache with NSE and BSE data.
+    Call this on application startup or when cache is empty.
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    import logging
+    log = logging.getLogger(__name__)
+    
+    try:
+        log.info("[CACHE_WARM] Pre-warming instruments cache for NSE and BSE...")
+        
+        # Warm NSE cache
+        nse_instruments = _get_cached_instruments(ks, "NSE")
+        log.info(f"[CACHE_WARM] ✅ Warmed NSE cache: {len(nse_instruments)} instruments")
+        
+        # Warm BSE cache  
+        bse_instruments = _get_cached_instruments(ks, "BSE")
+        log.info(f"[CACHE_WARM] ✅ Warmed BSE cache: {len(bse_instruments)} instruments")
+        
+        return True
+    except Exception as e:
+        log.error(f"[CACHE_WARM] ❌ Failed to warm cache: {e}", exc_info=True)
+        return False
+
+def _get_cached_instruments(ks, exchange: str = None):
+    """
+    Get instruments with caching to avoid rate limits.
+    
+    Args:
+        ks: Kite session
+        exchange: Exchange name (NSE, BSE, etc.) or None for all instruments
+    
+    Returns:
+        List of instrument dicts
+    """
+    import logging
+    import time
+    
+    log = logging.getLogger(__name__)
+    global _INSTRUMENTS_CACHE, _INSTRUMENTS_CACHE_TIME
+    
+    # Check if cache needs refresh (older than 1 hour)
+    current_time = time.time()
+    cache_expired = (
+        _INSTRUMENTS_CACHE_TIME is None or 
+        (current_time - _INSTRUMENTS_CACHE_TIME) > INSTRUMENTS_CACHE_TTL
+    )
+    
+    cache_key = exchange if exchange else "ALL"
+    
+    # Return from cache if available and fresh
+    if not cache_expired and cache_key in _INSTRUMENTS_CACHE:
+        log.debug(f"[CACHE] ✅ Returning cached instruments for {cache_key} ({len(_INSTRUMENTS_CACHE[cache_key])} instruments)")
+        return _INSTRUMENTS_CACHE[cache_key]
+    
+    # If cache exists but is stale, return it anyway to avoid rate limits
+    # We'll try to refresh in the background, but always prefer stale cache over API errors
+    if cache_key in _INSTRUMENTS_CACHE:
+        log.info(f"[CACHE] ⚡ Using stale cache for {cache_key} (age: {int(current_time - _INSTRUMENTS_CACHE_TIME)}s)")
+        # Still return the stale cache, but try to refresh async if possible
+        return _INSTRUMENTS_CACHE[cache_key]
+    
+    # Fetch from API only if no cache exists at all
+    try:
+        if exchange:
+            log.info(f"[CACHE] 🔄 Fetching instruments for {exchange} from Kite API (first time)...")
+            instruments = ks.instruments(exchange)
+        else:
+            log.info(f"[CACHE] 🔄 Fetching ALL instruments from Kite API (first time)...")
+            instruments = ks.instruments()
+        
+        if instruments and isinstance(instruments, list):
+            _INSTRUMENTS_CACHE[cache_key] = instruments
+            _INSTRUMENTS_CACHE_TIME = current_time
+            log.info(f"[CACHE] ✅ Cached {len(instruments)} instruments for {cache_key}")
+            return instruments
+        else:
+            log.warning(f"[CACHE] ⚠️ Invalid instruments response for {cache_key}")
+            return []
+            
+    except Exception as e:
+        error_msg = str(e)
+        
+        # Special handling for rate limit errors
+        if "too many requests" in error_msg.lower() or "rate limit" in error_msg.lower():
+            log.error(f"[CACHE] 🚫 RATE LIMIT hit for {cache_key}. Using stale cache if available.")
+        else:
+            log.error(f"[CACHE] ❌ Error fetching instruments for {cache_key}: {e}")
+        
+        # Return stale cache if available, even if expired
+        if cache_key in _INSTRUMENTS_CACHE:
+            log.warning(f"[CACHE] 💾 Returning stale cache for {cache_key} due to API error ({len(_INSTRUMENTS_CACHE[cache_key])} instruments)")
+            return _INSTRUMENTS_CACHE[cache_key]
+        
+        log.error(f"[CACHE] 💥 No cache available for {cache_key} and API call failed")
+        return []
+
+
 def _find_instrument_token_robust(ks, symbol: str) -> tuple[int | None, str | None]:
     """
     ULTRA-ROBUST instrument token finder with multiple fallback strategies.
     Tries EVERYTHING to find the stock, regardless of exchange or format.
+    Uses caching to avoid hitting Kite API rate limits.
     
     Returns: (token, exchange) tuple or (None, None) if not found
     """
@@ -422,23 +529,25 @@ def _find_instrument_token_robust(ks, symbol: str) -> tuple[int | None, str | No
     
     # Strategy 2: If not found on preferred, try other major exchanges
     if preferred_exchange == "NSE":
-        exchanges_to_try.extend(["BSE", "NFO"])
+        exchanges_to_try.extend(["BSE"])  # Removed NFO - not needed for most stocks
     elif preferred_exchange == "BSE":
-        exchanges_to_try.extend(["NSE", "BFO"])
+        exchanges_to_try.extend(["NSE"])
     else:
         exchanges_to_try.extend(["NSE", "BSE"])
     
     for exchange in exchanges_to_try:
         try:
             log.info(f"[ROBUST_LOOKUP] Trying exchange: {exchange}")
-            instruments = ks.instruments(exchange)
+            
+            # Use cached instruments to avoid rate limits
+            instruments = _get_cached_instruments(ks, exchange)
             
             # Validate instruments response
             if not instruments or not isinstance(instruments, list):
                 log.warning(f"[ROBUST_LOOKUP] Invalid instruments response for {exchange}")
                 continue
                 
-            log.info(f"[ROBUST_LOOKUP] Loaded {len(instruments)} instruments from {exchange}")
+            log.debug(f"[ROBUST_LOOKUP] Searching {len(instruments)} instruments from {exchange}")
             
             # Create variations to try (deduplicate)
             variations = list(dict.fromkeys([
@@ -492,60 +601,70 @@ def _find_instrument_token_robust(ks, symbol: str) -> tuple[int | None, str | No
             
             log.info(f"[ROBUST_LOOKUP] Not found on {exchange}, trying next...")
         except Exception as e:
-            log.error(f"[ROBUST_LOOKUP] Error searching {exchange}: {e}", exc_info=True)
+            log.error(f"[ROBUST_LOOKUP] Error searching {exchange}: {e}")
             continue
     
-    # Strategy 3: Last resort - search ALL exchanges
-    log.warning(f"[ROBUST_LOOKUP] Not found on primary exchanges, searching ALL exchanges...")
-    try:
-        all_instruments = ks.instruments()
-        
-        # Validate response
-        if not all_instruments or not isinstance(all_instruments, list):
-            log.error(f"[ROBUST_LOOKUP] Invalid instruments response from global search")
-            return None, None
+    # Strategy 3: Last resort - search ALL exchanges (only if not already tried)
+    if "ALL" not in [ex for ex in exchanges_to_try]:
+        log.warning(f"[ROBUST_LOOKUP] Not found on primary exchanges, searching ALL exchanges...")
+        try:
+            all_instruments = _get_cached_instruments(ks, None)
             
-        log.info(f"[ROBUST_LOOKUP] Loaded {len(all_instruments)} instruments from ALL exchanges")
-        
-        for inst in all_instruments:
-            if not inst or not isinstance(inst, dict):
-                continue
+            # Validate response
+            if not all_instruments or not isinstance(all_instruments, list):
+                log.error(f"[ROBUST_LOOKUP] Invalid instruments response from global search")
+                return None, None
                 
-            inst_symbol = str(inst.get("tradingsymbol", "")).upper()
-            if not inst_symbol:
-                continue
+            log.debug(f"[ROBUST_LOOKUP] Searching {len(all_instruments)} instruments from ALL exchanges")
             
-            # Try exact match first
-            if inst_symbol == tradingsymbol.upper():
-                token = inst.get("instrument_token")
-                exch = inst.get("exchange", "UNKNOWN")
-                if token and isinstance(token, (int, str)):
-                    try:
-                        token = int(token)
-                        log.info(f"[ROBUST_LOOKUP] ✅ FOUND on {exch} (global search): {inst_symbol} -> token {token}")
-                        return token, exch
-                    except (ValueError, TypeError):
-                        continue
-            
-            # Fuzzy match (more strict for global search)
-            if (len(tradingsymbol) >= 4 and 
-                tradingsymbol in inst_symbol and 
-                abs(len(inst_symbol) - len(tradingsymbol)) <= 3 and
-                inst_symbol.startswith(tradingsymbol[:3])):  # First 3 chars must match
-                token = inst.get("instrument_token")
-                exch = inst.get("exchange", "UNKNOWN")
-                if token and isinstance(token, (int, str)):
-                    try:
-                        token = int(token)
-                        log.info(f"[ROBUST_LOOKUP] ✅ FUZZY MATCH on {exch} (global search): {inst_symbol} -> token {token}")
-                        return token, exch
-                    except (ValueError, TypeError):
-                        continue
-    except Exception as e:
-        log.error(f"[ROBUST_LOOKUP] Error in global search: {e}", exc_info=True)
+            for inst in all_instruments:
+                if not inst or not isinstance(inst, dict):
+                    continue
+                    
+                inst_symbol = str(inst.get("tradingsymbol", "")).upper()
+                if not inst_symbol:
+                    continue
+                
+                # Try exact match first
+                if inst_symbol == tradingsymbol.upper():
+                    token = inst.get("instrument_token")
+                    exch = inst.get("exchange", "UNKNOWN")
+                    if token and isinstance(token, (int, str)):
+                        try:
+                            token = int(token)
+                            log.info(f"[ROBUST_LOOKUP] ✅ FOUND on {exch} (global search): {inst_symbol} -> token {token}")
+                            return token, exch
+                        except (ValueError, TypeError):
+                            continue
+                
+                # Fuzzy match (more strict for global search)
+                if (len(tradingsymbol) >= 4 and 
+                    tradingsymbol in inst_symbol and 
+                    abs(len(inst_symbol) - len(tradingsymbol)) <= 3 and
+                    inst_symbol.startswith(tradingsymbol[:3])):  # First 3 chars must match
+                    token = inst.get("instrument_token")
+                    exch = inst.get("exchange", "UNKNOWN")
+                    if token and isinstance(token, (int, str)):
+                        try:
+                            token = int(token)
+                            log.info(f"[ROBUST_LOOKUP] ✅ FUZZY MATCH on {exch} (global search): {inst_symbol} -> token {token}")
+                            return token, exch
+                        except (ValueError, TypeError):
+                            continue
+        except Exception as e:
+            log.error(f"[ROBUST_LOOKUP] Error in global search: {e}")
     
-    log.error(f"[ROBUST_LOOKUP] ❌ FAILED: Could not find instrument token for {symbol} on any exchange. "
-             f"Tried {len(exchanges_to_try)} exchanges with multiple variations.")
+    # Log detailed failure info
+    log.error(f"[ROBUST_LOOKUP] ❌ FAILED: Could not find instrument token for {symbol} on any exchange.")
+    log.error(f"[ROBUST_LOOKUP] Tried exchanges: {exchanges_to_try}")
+    log.error(f"[ROBUST_LOOKUP] Searched for variations: {[tradingsymbol, f'{tradingsymbol}-EQ', f'{tradingsymbol}-BE']}")
+    log.error(f"[ROBUST_LOOKUP] Cache status: {list(_INSTRUMENTS_CACHE.keys())}")
+    
+    # If cache is empty, that's likely the issue
+    if not _INSTRUMENTS_CACHE:
+        log.error(f"[ROBUST_LOOKUP] 💥 CACHE IS EMPTY! This is likely due to rate limiting. "
+                 f"The application needs to warm the cache on startup.")
+    
     return None, None
 
 
@@ -582,15 +701,19 @@ def _fetch_and_cache_historical_bars(symbol: str, date_yyyy_mm_dd: str) -> List[
             log.error(f"[FETCH] Kite session not initialized.")
             return []
         
-        # Use ULTRA-ROBUST instrument lookup
+        # Use ULTRA-ROBUST instrument lookup with detailed error reporting
         try:
             token, found_exchange = _find_instrument_token_robust(ks, symbol)
         except Exception as e:
-            log.error(f"[FETCH] Error in instrument lookup for {symbol}: {e}", exc_info=True)
+            log.error(f"[FETCH] ⚠️ Exception in instrument lookup for {symbol}: {e}", exc_info=True)
+            # Check if it's a rate limit error
+            if "too many requests" in str(e).lower() or "rate limit" in str(e).lower():
+                log.error(f"[FETCH] 🚫 Rate limit hit while looking up {symbol}. Try again in a few minutes.")
             return []
         
         if not token or not isinstance(token, int):
             log.error(f"[FETCH] ❌ Could not find instrument token for {symbol} on any exchange. "
+                     f"Parsed as: exchange='{found_exchange if found_exchange else 'None'}', token='{token}'. "
                      f"Please verify the symbol is correct. Examples: NSE:INFY, BSE:RELIANCE, NSE:BHEL")
             return []
         

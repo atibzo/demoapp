@@ -113,6 +113,50 @@ app.add_middleware(
 )
 
 
+# ---------- Startup Event: Warm Instrument Cache ----------
+@app.on_event("startup")
+async def startup_event():
+    """
+    Warm up the instruments cache on application startup to avoid rate limit issues.
+    This pre-fetches NSE and BSE instrument lists so they're ready for lookups.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+    
+    try:
+        # Import here to avoid circular imports
+        from .hist import warm_instruments_cache
+        from .kite import get_kite
+        
+        # Wait a moment for everything to initialize
+        import asyncio
+        await asyncio.sleep(1)
+        
+        # Check if we're authenticated
+        kite_session = get_kite()
+        if not kite_session.access_token:
+            log.warning("[STARTUP] ⚠️ Zerodha not authenticated yet. Instruments cache will be warmed on first use.")
+            return
+        
+        ks = kite_session.kite
+        if not ks:
+            log.warning("[STARTUP] ⚠️ Kite session not initialized. Cache will be warmed on first use.")
+            return
+        
+        # Warm the cache
+        log.info("[STARTUP] 🔥 Warming instruments cache...")
+        success = warm_instruments_cache(ks)
+        
+        if success:
+            log.info("[STARTUP] ✅ Instruments cache warmed successfully!")
+        else:
+            log.warning("[STARTUP] ⚠️ Failed to warm instruments cache. Will retry on first use.")
+            
+    except Exception as e:
+        log.error(f"[STARTUP] ❌ Error during cache warming: {e}", exc_info=True)
+        log.warning("[STARTUP] Cache warming failed, but application will continue. Cache will be populated on demand.")
+
+
 class AccessLogMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         t0 = time.perf_counter()

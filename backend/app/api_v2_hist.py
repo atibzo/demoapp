@@ -185,3 +185,195 @@ def hist_plan(
             status_code=500,
             detail=f"Failed to generate historical plan: {str(e)}"
         )
+
+@router.get("/debug/lookup")
+def debug_instrument_lookup(symbol: str, show_matches: bool = False):
+    """
+    Debug endpoint to test instrument lookup.
+    Shows detailed information about how a symbol is resolved.
+    
+    Args:
+        symbol: Stock symbol to lookup (e.g., BSE:BHEL, NSE:INFY, BHEL)
+        show_matches: If True, show all similar matches found (default: False)
+    
+    Returns:
+        Detailed lookup information including:
+        - parsed_exchange: The exchange extracted from symbol
+        - parsed_symbol: The trading symbol extracted
+        - token: The instrument token found (or null)
+        - found_exchange: The exchange where it was found (or null)
+        - cache_status: Information about instrument cache
+        - search_attempts: List of exchanges tried
+        - variations_tried: Symbol variations attempted
+        - similar_matches: (if show_matches=true) List of similar symbols found
+    """
+    from .hist import _find_instrument_token_robust, _INSTRUMENTS_CACHE, _INSTRUMENTS_CACHE_TIME
+    from .kite import get_kite
+    import logging
+    import time
+    
+    log = logging.getLogger(__name__)
+    
+    # Get Kite session
+    kite_session = get_kite()
+    if not kite_session.access_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Not logged in to Zerodha. Please login first."
+        )
+    
+    ks = kite_session.kite
+    if not ks:
+        raise HTTPException(
+            status_code=500,
+            detail="Kite session not initialized properly."
+        )
+    
+    # Parse symbol
+    symbol = symbol.replace(" ", "").upper()
+    if ":" in symbol:
+        parts = symbol.split(":", 1)
+        parsed_exchange = parts[0] if len(parts) == 2 else "NSE"
+        parsed_symbol = parts[1] if len(parts) == 2 else symbol
+    else:
+        parsed_exchange = "NSE"
+        parsed_symbol = symbol
+    
+    # Get cache status
+    cache_age = None
+    if _INSTRUMENTS_CACHE_TIME:
+        cache_age = int(time.time() - _INSTRUMENTS_CACHE_TIME)
+    
+    cache_info = {
+        "cached_exchanges": list(_INSTRUMENTS_CACHE.keys()),
+        "cache_age_seconds": cache_age,
+        "cache_counts": {k: len(v) for k, v in _INSTRUMENTS_CACHE.items()},
+        "cache_is_empty": len(_INSTRUMENTS_CACHE) == 0
+    }
+    
+    # Perform lookup
+    log.info(f"[DEBUG] Looking up {symbol} -> exchange:{parsed_exchange}, symbol:{parsed_symbol}")
+    token, found_exchange = _find_instrument_token_robust(ks, symbol)
+    
+    # Build variations that would be tried
+    variations = list(dict.fromkeys([
+        parsed_symbol,
+        f"{parsed_symbol}-EQ",
+        f"{parsed_symbol}-BE",
+        parsed_symbol.replace("-EQ", ""),
+        parsed_symbol.replace("-BE", ""),
+    ]))
+    
+    result = {
+        "input_symbol": symbol,
+        "parsed_exchange": parsed_exchange,
+        "parsed_symbol": parsed_symbol,
+        "token": token,
+        "found_exchange": found_exchange,
+        "success": token is not None,
+        "cache_status": cache_info,
+        "variations_tried": variations,
+        "exchanges_searched": [parsed_exchange, "BSE" if parsed_exchange == "NSE" else "NSE"],
+    }
+    
+    # If found, try to get more details from cache
+    if token and found_exchange and found_exchange in _INSTRUMENTS_CACHE:
+        for inst in _INSTRUMENTS_CACHE[found_exchange]:
+            if inst.get("instrument_token") == token:
+                result["instrument_details"] = {
+                    "tradingsymbol": inst.get("tradingsymbol"),
+                    "name": inst.get("name"),
+                    "exchange": inst.get("exchange"),
+                    "instrument_type": inst.get("instrument_type"),
+                    "segment": inst.get("segment"),
+                    "tick_size": inst.get("tick_size"),
+                    "lot_size": inst.get("lot_size"),
+                }
+                break
+    
+    # If requested, show similar matches for debugging
+    if show_matches and parsed_exchange in _INSTRUMENTS_CACHE:
+        similar = []
+        search_prefix = parsed_symbol[:3] if len(parsed_symbol) >= 3 else parsed_symbol
+        
+        for inst in _INSTRUMENTS_CACHE[parsed_exchange]:
+            inst_sym = str(inst.get("tradingsymbol", "")).upper()
+            if search_prefix in inst_sym:
+                similar.append({
+                    "symbol": inst_sym,
+                    "token": inst.get("instrument_token"),
+                    "name": inst.get("name", ""),
+                })
+                if len(similar) >= 20:  # Limit to 20 matches
+                    break
+        
+        result["similar_matches"] = similar
+        result["similar_count"] = len(similar)
+    
+    return result
+
+
+@router.post("/debug/cache/refresh")
+def debug_refresh_cache(exchange: str = None):
+    """
+    Manually refresh the instruments cache.
+    Useful if you suspect the cache is stale or corrupted.
+    
+    Args:
+        exchange: Specific exchange to refresh (NSE, BSE, ALL) or None for all
+    
+    Returns:
+        Status of cache refresh operation
+    """
+    from .hist import _INSTRUMENTS_CACHE, warm_instruments_cache
+    from .kite import get_kite
+    import logging
+    import time
+    
+    log = logging.getLogger(__name__)
+    
+    # Get Kite session
+    kite_session = get_kite()
+    if not kite_session.access_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Not logged in to Zerodha. Please login first."
+        )
+    
+    ks = kite_session.kite
+    if not ks:
+        raise HTTPException(
+            status_code=500,
+            detail="Kite session not initialized properly."
+        )
+    
+    try:
+        # Clear the cache for the requested exchange
+        if exchange and exchange != "ALL":
+            log.info(f"[DEBUG] Clearing cache for {exchange}")
+            _INSTRUMENTS_CACHE.pop(exchange, None)
+        else:
+            log.info(f"[DEBUG] Clearing entire instruments cache")
+            _INSTRUMENTS_CACHE.clear()
+        
+        # Warm the cache
+        success = warm_instruments_cache(ks)
+        
+        # Get updated status
+        cache_status = {
+            "cached_exchanges": list(_INSTRUMENTS_CACHE.keys()),
+            "cache_counts": {k: len(v) for k, v in _INSTRUMENTS_CACHE.items()}
+        }
+        
+        return {
+            "success": success,
+            "message": "Cache refreshed successfully" if success else "Cache refresh failed",
+            "cache_status": cache_status
+        }
+        
+    except Exception as e:
+        log.error(f"[DEBUG] Error refreshing cache: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refresh cache: {str(e)}"
+        )
