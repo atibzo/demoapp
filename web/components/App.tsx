@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { API, j } from '@/lib/api';
 import ErrorBoundary from './ErrorBoundary';
 import AnalystClient from './AnalystClient';
+import TradeRoom from './TradeRoom';
 
 /* ------------------------------------------------------------------ *
  * Types & helpers
@@ -217,7 +218,7 @@ function Header({ session, onLogin }:{session:Session|null; onLogin:()=>void}) {
 }
 
 function Tabs({tab,setTab}:{tab:string; setTab:(t:string)=>void}) {
-  const items=['Top Algos','Watch','Analyst','Journal','Policy','Config'];
+  const items=['Trade Room','Top Algos','Watch','Analyst','Journal','Policy','Config'];
   return <nav className="border-b border-slate-200 bg-white/60 backdrop-blur-sm">
     <div className="mx-auto max-w-[1200px] px-3 md:px-6">
       <div className="flex flex-wrap gap-2 py-3">
@@ -1056,7 +1057,7 @@ function Num({value, onChange, step=1}:{value:number; onChange:(v:number)=>void;
 export default function App() {
   console.log('🚀 App component mounting');
   const [session, setSession] = useState<Session | null>(null);
-  const [tab, setTab] = useState('Top Algos');
+  const [tab, setTab] = useState('Trade Room');
   const lastRevRef = useRef<number | null>(null);
 
   async function login() {
@@ -1089,6 +1090,7 @@ export default function App() {
       {session && <ModeBanner mode={session.mode} />}
       <Tabs tab={tab} setTab={setTab} />
       <ErrorBoundary>
+        {tab === 'Trade Room' && <TradeRoom session={session} />}
         {tab === 'Top Algos' && <TopAlgos session={session} />}
         {tab === 'Watch' && <Watch session={session} />}
         {tab === 'Analyst' && <Analyst session={session} />}
